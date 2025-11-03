@@ -1,0 +1,254 @@
+{
+  "steps": [
+    {
+      "key": "manual1",
+      "type": "manual",
+      "config": {
+        "mode": "form",
+        "formFields": [
+          {
+            "fieldName": "job_id",
+            "fieldType": "text",
+            "fieldValue": "83298"
+          },
+          {
+            "fieldName": "access_token",
+            "fieldType": "text",
+            "fieldValue": "2329-VKWXCS57GYDNFCHS72N4EEKE2EKB7EDA575ZPCAH7297XXQYHEB2Z7KBMXPB58YH-STPCHKHNJZUAV5Q99EFA4CK89AACPGF7WF7ZEVVMQKNBA9TSZLZ5PBJ4NBYG2NXW"
+          }
+        ]
+      }
+    },
+    {
+      "key": "http1",
+      "type": "http",
+      "config": {
+        "method": "POST",
+        "url": "https://workflow.base.com.vn/extapi/v1/job/get",
+        "bodyMode": "form",
+        "formBody": [
+          {
+            "key": "access_token",
+            "value": "{{steps.manual1.access_token}}"
+          },
+          {
+            "key": "id",
+            "value": "{{steps.manual1.job_id}}"
+          }
+        ],
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/x-www-form-urlencoded"
+          }
+        ],
+        "timeoutMs": 30000
+      }
+    },
+    {
+      "key": "set1",
+      "type": "set",
+      "config": {
+        "includeOtherFields": true,
+        "fields": [
+          {
+            "key": "api_result",
+            "value": "{{steps.http1.body}}",
+            "type": "object"
+          },
+          {
+            "key": "processed_at",
+            "value": "2024-11-02T12:00:00Z",
+            "type": "string"
+          }
+        ]
+      }
+    },
+    {
+      "key": "if1",
+      "type": "if",
+      "config": {
+        "mode": "simple",
+        "leftValue": "{{steps.http1.statusCode}}",
+        "operator": "==",
+        "rightValue": "200"
+      }
+    },
+    {
+      "key": "filter1",
+      "type": "filter",
+      "config": {
+        "logic": "AND",
+        "mode": "include",
+        "conditions": [
+          {
+            "field": "{{steps.http1.body.success}}",
+            "fieldType": "boolean",
+            "operator": "is equal to",
+            "value": "true"
+          }
+        ]
+      }
+    },
+    {
+      "key": "split1",
+      "type": "split",
+      "config": {
+        "fields": ["body"],
+        "includeMode": "none"
+      }
+    },
+    {
+      "key": "merge1",
+      "type": "merge",
+      "config": {
+        "mode": "append"
+      }
+    },
+    {
+      "key": "sort1",
+      "type": "sort",
+      "config": {
+        "sortKeys": [
+          {
+            "key": "statusCode",
+            "direction": "desc"
+          }
+        ]
+      }
+    },
+    {
+      "key": "limit1",
+      "type": "limit",
+      "config": {
+        "maxItems": 10,
+        "keepFrom": "first"
+      }
+    },
+    {
+      "key": "aggregate1",
+      "type": "aggregate",
+      "config": {
+        "operation": "count",
+        "fieldToAggregate": "statusCode"
+      }
+    },
+    {
+      "key": "switch1",
+      "type": "switch",
+      "config": {
+        "mode": "single",
+        "value": "{{steps.http1.statusCode}}",
+        "cases": ["200", "400", "500"],
+        "defaultCase": "other"
+      }
+    },
+    {
+      "key": "code1",
+      "type": "code",
+      "config": {
+        "code": "// Process the API response\nconst result = steps.http1;\nreturn {\n  success: result.statusCode === 200,\n  data: result.body,\n  timestamp: new Date().toISOString()\n};"
+      }
+    },
+    {
+      "key": "loop1",
+      "type": "loop",
+      "config": {
+        "items": "{{steps.http1.body}}",
+        "batchSize": 1,
+        "pauseBetweenBatches": 0,
+        "continueOnError": false
+      }
+    },
+    {
+      "key": "wait1",
+      "type": "wait",
+      "config": {
+        "duration": 5,
+        "unit": "seconds"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "manual1",
+      "target": "http1",
+      "type": "smoothstep"
+    },
+    {
+      "id": "e2",
+      "source": "http1",
+      "target": "set1",
+      "type": "smoothstep"
+    },
+    {
+      "id": "e3",
+      "source": "set1",
+      "target": "if1",
+      "type": "smoothstep"
+    },
+    {
+      "id": "e4",
+      "source": "if1",
+      "target": "filter1",
+      "type": "smoothstep",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "e5",
+      "source": "filter1",
+      "target": "split1",
+      "type": "smoothstep"
+    },
+    {
+      "id": "e6",
+      "source": "split1",
+      "target": "merge1",
+      "type": "smoothstep"
+    },
+    {
+      "id": "e7",
+      "source": "merge1",
+      "target": "sort1",
+      "type": "smoothstep"
+    },
+    {
+      "id": "e8",
+      "source": "sort1",
+      "target": "limit1",
+      "type": "smoothstep"
+    },
+    {
+      "id": "e9",
+      "source": "limit1",
+      "target": "aggregate1",
+      "type": "smoothstep"
+    },
+    {
+      "id": "e10",
+      "source": "aggregate1",
+      "target": "switch1",
+      "type": "smoothstep"
+    },
+    {
+      "id": "e11",
+      "source": "switch1",
+      "target": "code1",
+      "type": "smoothstep",
+      "sourceHandle": "0"
+    },
+    {
+      "id": "e12",
+      "source": "code1",
+      "target": "loop1",
+      "type": "smoothstep"
+    },
+    {
+      "id": "e13",
+      "source": "loop1",
+      "target": "wait1",
+      "type": "smoothstep"
+    }
+  ]
+}

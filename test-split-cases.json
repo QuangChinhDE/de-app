@@ -1,0 +1,63 @@
+﻿{
+  "testCase": "SPLIT Node Test",
+  "scenarios": [
+    {
+      "name": "Test 1: Include none - Only split fields",
+      "manual_data": [
+        {"id": 1, "name": "Alice", "email": "alice@test.com", "age": 25, "address": "123 St"},
+        {"id": 2, "name": "Bob", "email": "bob@test.com", "age": 30, "address": "456 Ave"}
+      ],
+      "split_config": {
+        "fields": ["id", "name"],
+        "includeMode": "none",
+        "selectedFields": []
+      },
+      "expected_output": [
+        {"id": 1, "name": "Alice"},
+        {"id": 2, "name": "Bob"}
+      ]
+    },
+    {
+      "name": "Test 2: Include all - Split fields + all others",
+      "manual_data": [{"id": 1, "name": "Alice", "email": "alice@test.com"}],
+      "split_config": {
+        "fields": ["id", "name"],
+        "includeMode": "all",
+        "selectedFields": []
+      },
+      "expected_output": [
+        {"id": 1, "name": "Alice", "email": "alice@test.com"}
+      ]
+    },
+    {
+      "name": "Test 3: Include selected - Split fields + selected others",
+      "manual_data": [
+        {"id": 1, "name": "Alice", "email": "alice@test.com", "age": 25, "phone": "111"}
+      ],
+      "split_config": {
+        "fields": ["id", "name"],
+        "includeMode": "selected",
+        "selectedFields": ["email"]
+      },
+      "expected_output": [
+        {"id": 1, "name": "Alice", "email": "alice@test.com"}
+      ]
+    },
+    {
+      "name": "Test 4: Missing fields handling",
+      "manual_data": [
+        {"id": 1, "name": "Alice"},
+        {"id": 2, "name": "Bob", "email": "bob@test.com"}
+      ],
+      "split_config": {
+        "fields": ["id", "email"],
+        "includeMode": "none",
+        "selectedFields": []
+      },
+      "expected_output": [
+        {"id": 1},
+        {"id": 2, "email": "bob@test.com"}
+      ]
+    }
+  ]
+}
