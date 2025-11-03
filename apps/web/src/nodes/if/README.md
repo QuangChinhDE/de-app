@@ -4,6 +4,27 @@
 
 **IF Node** là node điều kiện cơ bản, cho phép bạn kiểm tra một điều kiện và chỉ cho phép workflow tiếp tục khi điều kiện đúng (true). Nếu điều kiện sai (false), workflow sẽ dừng lại tại node này.
 
+## 🎨 UI Components (Custom Form)
+
+**Form Component**: `IfForm.tsx` (~120 lines)
+
+**Features**:
+- ✅ FilterConditionsEditor integration
+- ✅ Logic operator toggle: AND / OR
+- ✅ Type-based operators (string có 14, number có 10, boolean có 2, array có 4)
+- ✅ Add/remove conditions dynamically
+- ✅ TokenizedInput cho source fields
+- ✅ TRUE/FALSE outputs visualization
+
+**Dependencies**:
+- React Hook Form + Zod validation
+- Design system primitives (Button)
+- FilterConditionsEditor component (shared)
+
+**Logic Operators**:
+- **AND**: Tất cả conditions phải thỏa mãn
+- **OR**: Ít nhất 1 condition thỏa mãn
+
 ## 🎯 Khi nào sử dụng
 
 - Khi cần kiểm tra một điều kiện đơn giản (true/false)
@@ -178,9 +199,61 @@ IF Node config:
 
 ## ⚠️ Lưu ý
 
-- IF node **KHÔNG hỗ trợ else branch** → Chỉ có "pass" hoặc "stop"
-- Nếu cần else branch → Dùng **Switch node**
-- Condition phải trả về boolean (true/false)
+- IF node có 2 outputs: **TRUE** và **FALSE** (khác với mô tả cũ)
+- Logic operator (AND/OR) applies cho multiple conditions
+- FilterConditionsEditor cho phép add unlimited conditions
+- Type-based operators tự động update khi chọn field type
+
+## 🔧 Development Guide
+
+### Cách Update Node
+
+#### 1. Thay đổi Schema (`schema.ts`)
+```typescript
+export const ifConfigSchema = z.object({
+  conditions: z.array(z.object({
+    field: z.string(),
+    fieldType: z.enum(["string", "number", "boolean", "array"]),
+    operator: z.string(),
+    value: z.string(),
+  })),
+  logic: z.enum(["AND", "OR"]).default("AND"),
+});
+```
+
+#### 2. Thêm Operator Mới (`IfForm.tsx`)
+FilterConditionsEditor tự động handle operators based on fieldType.
+Để thêm operator mới, update FilterConditionsEditor component.
+
+#### 3. Update Runtime Logic (`runtime.ts`)
+```typescript
+export const ifRuntime: NodeRuntime<IfConfig> = {
+  async execute(config, context) {
+    const { conditions, logic } = config;
+    
+    const results = conditions.map(cond => evaluateCondition(cond, context));
+    
+    const passed = logic === "AND" 
+      ? results.every(r => r === true)
+      : results.some(r => r === true);
+    
+    return {
+      success: true,
+      data: context.previousOutput,
+      outputKey: passed ? "true" : "false", // Route to TRUE/FALSE output
+    };
+  },
+};
+```
+
+#### 4. Testing Checklist
+- [ ] Test AND logic với multiple conditions
+- [ ] Test OR logic với multiple conditions
+- [ ] Test all operators cho mỗi field type
+- [ ] Test token resolution trong source fields
+- [ ] Test TRUE output routing
+- [ ] Test FALSE output routing
+- [ ] Verify FilterConditionsEditor add/remove works
 - Token không tồn tại → Resolved thành empty string `""`
 - So sánh string: Phải dùng quotes `"value"` hoặc `'value'`
 - So sánh number: Không cần quotes `123`

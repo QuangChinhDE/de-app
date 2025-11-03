@@ -2,6 +2,23 @@
 
 Iterate over an array and process each item individually.
 
+## 🎨 UI Components (Custom Form)
+
+**Form Component**: `LoopForm.tsx` (~180 lines)
+
+**Features**:
+- ✅ TokenizedInput cho items array
+- ✅ BatchSize number input (1-100)
+- ✅ PauseBetweenBatches milliseconds input
+- ✅ ContinueOnError checkbox
+- ✅ Performance tips box với amber color
+- ✅ Info box với batch size trade-offs và rate limiting advice
+
+**Dependencies**:
+- React Hook Form + Zod validation
+- Design system primitives (Input, Button, Checkbox)
+- TokenizedInput component
+
 ## 📋 Overview
 
 The Loop node takes an array and processes each item one by one (or in batches). This is essential for:

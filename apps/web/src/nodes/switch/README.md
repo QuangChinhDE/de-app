@@ -4,6 +4,28 @@
 
 **Switch Node** cho phép bạn phân nhánh workflow dựa trên giá trị của một expression. Mỗi case sẽ có một điều kiện riêng, và chỉ case đầu tiên match sẽ được thực thi.
 
+## 🎨 UI Components (Custom Form)
+
+**Form Component**: `SwitchForm.tsx` (~180 lines)
+
+**Features**:
+- ✅ Mode toggle: **SINGLE** (match value) / **FILTER** (filter array)
+- ✅ CasesEditor integration với drag-drop support
+- ✅ TokenizedInput cho value/fieldPath
+- ✅ Dynamic output handles (1 handle per case + default)
+- ✅ Add/remove cases với visual feedback
+- ✅ Default case configuration
+
+**Dependencies**:
+- React Hook Form + Zod validation
+- Design system primitives (Button, Select)
+- TokenizedInput component
+- CasesEditor component (shared)
+
+**Modes**:
+- **SINGLE**: Match một giá trị cụ thể → route đến output tương ứng
+- **FILTER**: Filter array items → route từng item đến case outputs
+
 ## 🎯 Khi nào sử dụng
 
 - Khi có nhiều hơn 2 cases (nhiều nhánh)
@@ -292,8 +314,81 @@ Default:
 
 ## ⚠️ Lưu ý
 
-- Switch chỉ match **EXACT value** (không support regex, range)
+- Switch có 2 modes: **SINGLE** (exact match) và **FILTER** (array filtering)
+- SINGLE mode: Match giá trị exact → route đến 1 output
+- FILTER mode: Filter array → route items đến multiple outputs
 - Type phải khớp: string vs number
+- CasesEditor hỗ trợ drag-drop để reorder cases
+
+## 🔧 Development Guide
+
+### Cách Update Node
+
+#### 1. Thay đổi Schema (`schema.ts`)
+```typescript
+export const switchConfigSchema = z.object({
+  mode: z.enum(["single", "filter"]).default("single"),
+  value: z.string(), // For single mode
+  filterPath: z.string(), // For filter mode (field to match against)
+  cases: z.array(z.object({
+    value: z.string(),
+  })),
+  defaultCase: z.string().optional(),
+});
+```
+
+#### 2. Thêm Case Type Mới (`SwitchForm.tsx`)
+CasesEditor component handles case management.
+To add new case features, update CasesEditor component.
+
+#### 3. Update Runtime Logic (`runtime.ts`)
+```typescript
+export const switchRuntime: NodeRuntime<SwitchConfig> = {
+  async execute(config, context) {
+    const { mode, value, filterPath, cases, defaultCase } = config;
+    
+    if (mode === "single") {
+      const matchedCaseIndex = cases.findIndex(c => c.value === value);
+      const outputKey = matchedCaseIndex >= 0 
+        ? `case${matchedCaseIndex}` 
+        : "default";
+      
+      return {
+        success: true,
+        data: context.previousOutput,
+        outputKey, // Route to specific output handle
+      };
+    } else {
+      // FILTER mode: route array items to different outputs
+      const inputArray = Array.isArray(context.previousOutput) 
+        ? context.previousOutput 
+        : [context.previousOutput];
+      
+      const outputs = {};
+      inputArray.forEach(item => {
+        const fieldValue = _.get(item, filterPath);
+        const caseIndex = cases.findIndex(c => c.value === fieldValue);
+        const key = caseIndex >= 0 ? `case${caseIndex}` : "default";
+        
+        if (!outputs[key]) outputs[key] = [];
+        outputs[key].push(item);
+      });
+      
+      return { success: true, data: outputs };
+    }
+  },
+};
+```
+
+#### 4. Testing Checklist
+- [ ] Test SINGLE mode với exact match
+- [ ] Test SINGLE mode với no match (default case)
+- [ ] Test FILTER mode với array input
+- [ ] Test case drag-drop reordering
+- [ ] Test add/remove cases
+- [ ] Test token resolution trong value/filterPath
+- [ ] Verify dynamic output handles rendering
+- [ ] Test routing to correct output handle
 - Token auto-unwrap array → Chỉ lấy first item
 - Default case luôn được thực thi nếu không match
 - Không support multiple matches → Chỉ case đầu tiên

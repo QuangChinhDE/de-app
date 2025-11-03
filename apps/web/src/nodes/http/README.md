@@ -4,6 +4,25 @@
 
 **HTTP Request** node cho phép bạn gọi API endpoints qua các phương thức HTTP (GET, POST, PUT, PATCH, DELETE). Node này hỗ trợ authentication, custom headers, query parameters, và request body.
 
+## 🎨 UI Components (Custom Form)
+
+**Form Component**: `HttpForm.tsx` (~280 lines)
+
+**Features**:
+- ✅ Method selector: GET/POST/PUT/PATCH/DELETE
+- ✅ TokenizedInput cho URL với token parsing
+- ✅ Authentication: None/Bearer/Basic với conditional fields
+- ✅ KeyValueEditor cho headers & query parameters
+- ✅ 4 Body modes: JSON, Form Data, Multipart, Raw
+- ✅ Conditional rendering based on method & body mode
+- ✅ Drag-drop support cho tất cả fields
+
+**Dependencies**:
+- React Hook Form + Zod validation
+- Design system primitives (Input, Select, Textarea, Button)
+- TokenizedInput component
+- KeyValueEditor component
+
 ## 🎯 Khi nào sử dụng
 
 - Khi cần gọi REST API
@@ -244,6 +263,65 @@ HTTP node trả về object với cấu trúc:
 - GET và DELETE không có body
 - Bearer Token và Basic Auth **không được mask** khi hiển thị (cần cẩn thận)
 - CORS: Frontend không thể call directly → Cần proxy qua backend (đã có sẵn)
+
+## 🔧 Development Guide
+
+### Cách Update Node
+
+#### 1. Thay đổi Schema (`schema.ts`)
+```typescript
+export const httpConfigSchema = z.object({
+  method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]),
+  url: z.string().url(),
+  authType: z.enum(["none", "bearer", "basic"]),
+  headers: z.array(...),
+  queryParams: z.array(...),
+  bodyMode: z.enum(["json", "form", "multipart", "raw"]),
+  // ... body fields
+});
+```
+
+#### 2. Thêm Body Mode Mới (`HttpForm.tsx`)
+```typescript
+// Add new body mode in enum
+bodyMode: z.enum(["json", "form", "multipart", "raw", "graphql"]),
+
+// Add conditional rendering
+{watch("bodyMode") === "graphql" && (
+  <Textarea
+    label="GraphQL Query"
+    {...register("graphqlQuery")}
+  />
+)}
+```
+
+#### 3. Update Runtime (`runtime.ts`)
+```typescript
+export const httpRuntime: NodeRuntime<HttpConfig> = {
+  async execute(config, context) {
+    const { method, url, authType, headers, bodyMode, ... } = config;
+    
+    // Build request options
+    const options = {
+      method,
+      headers: buildHeaders(headers, authType),
+      body: buildBody(bodyMode, config),
+    };
+    
+    const response = await fetch(resolveUrl(url, context), options);
+    return { success: response.ok, data: await response.json() };
+  },
+};
+```
+
+#### 4. Testing Checklist
+- [ ] Test all 5 HTTP methods
+- [ ] Test all 3 auth types với valid/invalid credentials
+- [ ] Test all 4 body modes với different data types
+- [ ] Test token resolution trong URL/headers/body
+- [ ] Test KeyValueEditor add/remove/edit functionality
+- [ ] Verify CORS proxy works correctly
+- [ ] Test error handling (network errors, 4xx, 5xx)
 - Timeout: Request sẽ timeout sau một thời gian nhất định (mặc định của fetch)
 - Không retry tự động: Nếu request fail, cần manual retry
 

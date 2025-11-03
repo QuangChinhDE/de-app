@@ -2,8 +2,8 @@ import type { NodeDefinition, NodeDefinitionKey } from "./types";
 import { manualNode } from "./manual";
 import { httpNode } from "./http";
 import { ifNode } from "./if";
+import { filterNode } from "./filter";
 import { switchNode } from "./switch";
-// FILTER node removed - IF node now handles filtering with TRUE/FALSE branches
 import { setNode } from "./set";
 import { splitNode } from "./split";
 import { mergeNode } from "./merge";
@@ -18,8 +18,8 @@ const nodeDefinitionsArray: NodeDefinition[] = [
   manualNode,
   httpNode,
   ifNode,
+  filterNode,
   switchNode,
-  // filterNode removed - use IF node instead
   setNode,
   splitNode,
   mergeNode,

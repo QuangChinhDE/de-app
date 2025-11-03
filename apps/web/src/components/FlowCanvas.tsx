@@ -205,12 +205,8 @@ export function FlowCanvas(): JSX.Element {
     setNodes(finalNodes);
     setEdges(layoutedEdges);
 
-    // Save new positions to cache
-    const newPositions: Record<string, { x: number; y: number }> = {};
-    finalNodes.forEach((node) => {
-      newPositions[node.id] = node.position;
-    });
-    saveNodePositions(newPositions);
+    // Note: We don't save positions here to avoid infinite loop
+    // Positions are saved on node drag end instead
 
     // Fit view when layout changes
     setTimeout(() => {
@@ -288,6 +284,18 @@ export function FlowCanvas(): JSX.Element {
     [selectStep, setShowConfigPanel]
   );
 
+  const onNodeDragStop = useCallback(
+    (_event: React.MouseEvent, node: Node) => {
+      // Save node position when drag ends
+      const newPositions: Record<string, { x: number; y: number }> = {
+        ...nodePositions,
+        [node.id]: node.position,
+      };
+      saveNodePositions(newPositions);
+    },
+    [nodePositions, saveNodePositions]
+  );
+
   return (
     <div className="h-full w-full bg-ink-50">
       <ReactFlow
@@ -298,6 +306,7 @@ export function FlowCanvas(): JSX.Element {
         onConnect={onConnect}
         onNodeClick={onNodeClick}
         onNodeDoubleClick={onNodeDoubleClick}
+        onNodeDragStop={onNodeDragStop}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         fitView

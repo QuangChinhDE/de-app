@@ -2,6 +2,26 @@
 
 Combines data from multiple sources with different strategies.
 
+## 🎨 UI Components (Custom Form)
+
+**Form Component**: `MergeForm.tsx` (~240 lines - most complex form)
+
+**Features**:
+- ✅ 3 mode buttons: APPEND / MERGE / JOIN
+- ✅ Input count selector (2-5 inputs)
+- ✅ Conditional options per mode:
+  - APPEND: removeDuplicates checkbox
+  - MERGE: mergeStrategy dropdown (last/first/array)
+  - JOIN: 4 fields (joinKey1, joinKey2, joinType, flattenJoined)
+- ✅ TokenizedInput cho tất cả input fields
+- ✅ Visual mode indicators with colors
+
+**Dependencies**:
+- React Hook Form + Zod validation
+- Design system primitives (Input, Select, Button, Checkbox)
+- TokenizedInput component
+- Conditional rendering based on mode selection
+
 ## 📋 Modes
 
 ### 1. **APPEND Mode** - Concatenate Arrays
@@ -223,6 +243,86 @@ Output:
    - Useful when merging filtered results that might overlap
 
 5. **Use flatten in JOIN**
+   - Simplifies output structure for easier access
+
+---
+
+## 🔧 Development Guide
+
+### Cách Update Node
+
+#### 1. Thay đổi Schema (`schema.ts`)
+```typescript
+export const mergeConfigSchema = z.object({
+  mode: z.enum(["append", "merge", "join"]),
+  inputCount: z.number().min(2).max(5).default(2),
+  // APPEND mode
+  removeDuplicates: z.boolean().optional(),
+  // MERGE mode
+  mergeStrategy: z.enum(["last", "first", "array"]).optional(),
+  // JOIN mode
+  joinKey1: z.string().optional(),
+  joinKey2: z.string().optional(),
+  joinType: z.enum(["inner", "left", "right", "outer"]).optional(),
+  flattenJoined: z.boolean().optional(),
+});
+```
+
+#### 2. Thêm Mode Mới (`MergeForm.tsx`)
+```typescript
+// Add new mode button
+<button
+  type="button"
+  onClick={() => setValue("mode", "intersect")}
+  className={mode === "intersect" ? "bg-purple-500" : "bg-gray-200"}
+>
+  INTERSECT
+</button>
+
+// Add conditional fields
+{mode === "intersect" && (
+  <Input
+    label="Compare Field"
+    {...register("compareField")}
+  />
+)}
+```
+
+#### 3. Update Runtime Logic (`runtime.ts`)
+```typescript
+export const mergeRuntime: NodeRuntime<MergeConfig> = {
+  async execute(config, context) {
+    const { mode, inputCount } = config;
+    
+    // Get inputs from multiple sources
+    const inputs = Array.from({ length: inputCount }, (_, i) => 
+      context.inputs[`input${i + 1}`]
+    );
+    
+    switch (mode) {
+      case "append":
+        return appendArrays(inputs, config.removeDuplicates);
+      case "merge":
+        return mergeObjects(inputs, config.mergeStrategy);
+      case "join":
+        return joinArrays(inputs, config);
+      default:
+        throw new Error(`Unknown mode: ${mode}`);
+    }
+  },
+};
+```
+
+#### 4. Testing Checklist
+- [ ] Test APPEND với 2-5 inputs
+- [ ] Test APPEND với removeDuplicates ON/OFF
+- [ ] Test MERGE với all 3 strategies
+- [ ] Test JOIN với all 4 join types
+- [ ] Test JOIN với flattenJoined ON/OFF
+- [ ] Test mode switching preserves relevant config
+- [ ] Test inputCount selector updates UI correctly
+- [ ] Test token resolution trong all input fields
+- [ ] Verify multiple input handles render correctly
    - Easier to work with flat objects downstream
    - Use nested structure only if you need to distinguish left/right
 

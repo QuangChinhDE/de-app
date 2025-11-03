@@ -4,6 +4,23 @@
 
 **Manual Trigger** là node khởi đầu của workflow. Node này cho phép bạn nhập dữ liệu thủ công (manual data input) để bắt đầu một workflow.
 
+## 🎨 UI Components (Custom Form)
+
+**Form Component**: `ManualForm.tsx` (~330 lines)
+
+**Features**:
+- ✅ Dual mode: JSON mode & Form mode (builder)
+- ✅ JSON mode: Monaco-like textarea với syntax validation
+- ✅ Form mode: Visual field builder với drag-drop
+- ✅ FormFieldsEditor: Add/remove fields với name/value/type
+- ✅ Toggle switch giữa 2 modes với preserved data
+- ✅ Type support: String, Number, Boolean, Object, Array
+
+**Dependencies**:
+- React Hook Form + Zod validation
+- Design system primitives (Textarea, Button, Select)
+- Embedded FormFieldsEditor component
+
 ## 🎯 Khi nào sử dụng
 
 - Khi bạn muốn test workflow với dữ liệu mẫu
@@ -97,6 +114,53 @@ Output của Manual node có thể được sử dụng bởi:
 - **SET Node**: Transform/modify data
 
 ## 💡 Tips & Best Practices
+
+1. **Sử dụng JSON mode**: Cho data phức tạp với nested objects/arrays
+2. **Sử dụng Form mode**: Cho data đơn giản, dễ quản lý fields
+3. **Validate JSON**: Đảm bảo JSON hợp lệ trước khi Run
+4. **Test data**: Dùng Fuzz button để generate test data nhanh
+
+## 🔧 Development Guide
+
+### Cách Update Node
+
+#### 1. Thay đổi Schema (`schema.ts`)
+```typescript
+export const manualConfigSchema = z.object({
+  mode: z.enum(["json", "form"]),
+  data: z.string(), // JSON string for json mode
+  fields: z.array(...), // Array for form mode
+});
+```
+
+#### 2. Update Form (`ManualForm.tsx`)
+- Modify field layout in JSX
+- Add new validation rules
+- Update FormFieldsEditor for new field types
+
+#### 3. Update Runtime (`runtime.ts`)
+```typescript
+export const manualRuntime: NodeRuntime<ManualConfig> = {
+  async execute(config, context) {
+    const { mode, data, fields } = config;
+    
+    if (mode === "json") {
+      return { success: true, data: JSON.parse(data) };
+    } else {
+      // Convert fields to object
+      const result = convertFieldsToObject(fields);
+      return { success: true, data: result };
+    }
+  },
+};
+```
+
+#### 4. Testing Checklist
+- [ ] Test JSON mode với valid/invalid JSON
+- [ ] Test Form mode với different field types
+- [ ] Test mode switching preserves data
+- [ ] Test drag-drop functionality
+- [ ] Verify output format matches expected structure
 
 1. **JSON hợp lệ**: Luôn kiểm tra JSON syntax trước khi run
 2. **Dữ liệu mẫu**: Nên dùng dữ liệu giống với dữ liệu thực tế để test chính xác

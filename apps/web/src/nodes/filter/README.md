@@ -4,6 +4,27 @@
 
 **Filter Node** cho phép bạn lọc (filter) các items trong một array dựa trên các điều kiện. Node này hỗ trợ nhiều loại operators cho từng type dữ liệu (string, number, boolean, array).
 
+## 🎨 UI Components (Custom Form)
+
+**Form Component**: `FilterForm.tsx` (~150 lines)
+
+**Features**:
+- ✅ FilterConditionsEditor integration
+- ✅ Logic operator toggle: AND / OR
+- ✅ Mode toggle: INCLUDE (keep matching) / EXCLUDE (remove matching)
+- ✅ Type-based operators với dropdown dynamic
+- ✅ Add/remove conditions với visual feedback
+- ✅ TokenizedInput cho source fields
+
+**Dependencies**:
+- React Hook Form + Zod validation
+- Design system primitives (Button, Select)
+- FilterConditionsEditor component (shared với IF node)
+
+**Modes**:
+- **INCLUDE**: Giữ items thỏa mãn conditions
+- **EXCLUDE**: Loại bỏ items thỏa mãn conditions
+
 ## 🎯 Khi nào sử dụng
 
 - Khi cần lọc array dựa trên điều kiện
@@ -303,12 +324,76 @@ Filter node trả về array đã được filter:
 ## ⚠️ Lưu ý
 
 - **Input phải là array**: Nếu không phải array, sẽ trả về empty array
-- **AND logic only**: Tất cả conditions phải true (không support OR)
+- **Logic operator**: Hỗ trợ cả AND và OR (update từ phiên bản cũ)
+- **Mode toggle**: INCLUDE giữ matching items, EXCLUDE loại bỏ matching items
 - **Token auto-unwrap**: `{{steps.manual1.status}}` tự động lấy field từ từng item
 - **Type conversion**: Node tự động convert value sang đúng type
 - **Case sensitive**: String comparison phân biệt hoa thường
 
-## 🐛 Troubleshooting
+## � Development Guide
+
+### Cách Update Node
+
+#### 1. Thay đổi Schema (`schema.ts`)
+```typescript
+export const filterConfigSchema = z.object({
+  conditions: z.array(z.object({
+    field: z.string(),
+    fieldType: z.enum(["string", "number", "boolean", "array"]),
+    operator: z.string(),
+    value: z.string(),
+  })),
+  logic: z.enum(["AND", "OR"]).default("AND"),
+  mode: z.enum(["include", "exclude"]).default("include"),
+});
+```
+
+#### 2. Thêm Mode Mới (`FilterForm.tsx`)
+```typescript
+// Add new mode option
+mode: z.enum(["include", "exclude", "transform"]),
+
+// Add conditional UI
+{watch("mode") === "transform" && (
+  <Input label="Transform Expression" {...register("transformExpr")} />
+)}
+```
+
+#### 3. Update Runtime Logic (`runtime.ts`)
+```typescript
+export const filterRuntime: NodeRuntime<FilterConfig> = {
+  async execute(config, context) {
+    const { conditions, logic, mode } = config;
+    const inputArray = Array.isArray(context.previousOutput) 
+      ? context.previousOutput 
+      : [context.previousOutput];
+    
+    const filtered = inputArray.filter(item => {
+      const results = conditions.map(cond => evaluateCondition(cond, item));
+      const matches = logic === "AND" 
+        ? results.every(r => r === true)
+        : results.some(r => r === true);
+      
+      return mode === "include" ? matches : !matches;
+    });
+    
+    return { success: true, data: filtered };
+  },
+};
+```
+
+#### 4. Testing Checklist
+- [ ] Test AND logic với multiple conditions
+- [ ] Test OR logic với multiple conditions
+- [ ] Test INCLUDE mode (keep matching)
+- [ ] Test EXCLUDE mode (remove matching)
+- [ ] Test all operators cho mỗi field type
+- [ ] Test với empty array input
+- [ ] Test với non-array input (should return [])
+- [ ] Test token resolution trong conditions
+- [ ] Verify FilterConditionsEditor functionality
+
+## �🐛 Troubleshooting
 
 **Trả về empty array**:
 - Input không phải array

@@ -1,10 +1,14 @@
 import type { NodeDefinition } from "../types";
 import { MERGE_SCHEMA } from "./schema";
 import { runMergeNode } from "./runtime";
+import { MergeForm } from "./MergeForm";
 
 export const mergeNode: NodeDefinition = {
   key: "merge",
-  schema: MERGE_SCHEMA,
+  schema: {
+    ...MERGE_SCHEMA,
+    formComponent: MergeForm,
+  },
   createInitialConfig: () => ({
     mode: "append",
     input1: "",

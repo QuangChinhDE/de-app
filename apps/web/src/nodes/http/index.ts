@@ -1,10 +1,14 @@
 import type { NodeDefinition } from "../types";
 import { HTTP_SCHEMA } from "./schema";
 import { runHttpNode } from "./runtime";
+import { HttpForm } from "./HttpForm";
 
 export const httpNode: NodeDefinition = {
   key: "http",
-  schema: HTTP_SCHEMA,
+  schema: {
+    ...HTTP_SCHEMA,
+    formComponent: HttpForm,
+  },
   createInitialConfig: () => ({
     method: "GET",
     url: "https://jsonplaceholder.typicode.com/users/1",

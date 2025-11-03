@@ -41,6 +41,22 @@ export type FieldDef = {
  * - "action": External app integrations (HTTP, Database, APIs, etc.) - BLUE colors  
  * - "utility": Data transformation/logic (IF, SWITCH, FILTER, SET, SPLIT, etc.) - PURPLE colors
  */
+/**
+ * NodeFormProps - Interface for custom node form components
+ * Used by node-specific forms to ensure consistent API
+ */
+import type { ComponentType } from "react";
+
+export interface NodeFormProps<TConfig = Record<string, unknown>> {
+  schema: NodeSchema;
+  value: TConfig;
+  onChange: (value: TConfig) => void;
+  onRun: (value: TConfig) => void;
+  isRunning?: boolean;
+  onFuzz?: (current: TConfig) => TConfig;
+  stepOutputs?: Record<string, unknown>;
+}
+
 export type NodeSchema = {
   key: string;
   name: string;
@@ -48,6 +64,11 @@ export type NodeSchema = {
   inputs: FieldDef[];
   outputs: FieldDef[];
   sample?: unknown;
+  /**
+   * Optional custom form component for this node
+   * If not provided, BaseNodeForm will be used as fallback
+   */
+  formComponent?: ComponentType<NodeFormProps<any>>;
 };
 
 export type RunRecord = {

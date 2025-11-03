@@ -2,6 +2,7 @@ import type { NodeDefinition } from "../types";
 import type { NodeSchema } from "@node-playground/types";
 import { SET_FIELDS, SetNodeConfigSchema } from "./schema";
 import { runSetNode } from "./runtime";
+import { SetForm } from "./SetForm";
 
 const SET_SCHEMA: NodeSchema = {
   key: "set",
@@ -9,6 +10,7 @@ const SET_SCHEMA: NodeSchema = {
   type: "utility",
   inputs: SET_FIELDS,
   outputs: [{ key: "transformed", type: "object" }],
+  formComponent: SetForm,
 };
 
 export const setNode: NodeDefinition = {

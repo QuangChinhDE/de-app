@@ -6,6 +6,22 @@
 - **SET Node**: Thêm/sửa fields
 - **SPLIT Node**: Tách/chọn fields ra
 
+## 🎨 UI Components (Custom Form)
+
+**Form Component**: `SplitForm.tsx` (~140 lines)
+
+**Features**:
+- ✅ Mode toggle: AUTO / FIELD
+- ✅ AUTO mode: Automatically split array items
+- ✅ FIELD mode: TokenizedInput cho fieldPath để split nested arrays
+- ✅ Info box explaining split behavior với indigo color
+- ✅ Conditional rendering based on mode
+
+**Dependencies**:
+- React Hook Form + Zod validation
+- Design system primitives (Button, Select)
+- TokenizedInput component
+
 ## 🎯 Khi nào sử dụng
 
 - Khi cần extract một số fields cụ thể từ object

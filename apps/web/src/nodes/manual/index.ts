@@ -1,10 +1,14 @@
 import type { NodeDefinition } from "../types";
 import { MANUAL_SCHEMA } from "./schema";
 import { runManualNode } from "./runtime";
+import { ManualForm } from "./ManualForm";
 
 export const manualNode: NodeDefinition = {
   key: "manual",
-  schema: MANUAL_SCHEMA,
+  schema: {
+    ...MANUAL_SCHEMA,
+    formComponent: ManualForm,
+  },
   createInitialConfig: () => ({
     mode: "json",
     jsonPayload: `[

@@ -4,6 +4,22 @@
 
 **SET Node** cho phép bạn thêm, sửa đổi, hoặc tạo mới các fields trong data. Node này hoạt động giống như SET node trong n8n, hỗ trợ type conversion và drag-drop từ DATA panel.
 
+## 🎨 UI Components (Custom Form)
+
+**Form Component**: `SetForm.tsx` (~110 lines)
+
+**Features**:
+- ✅ KeyValueEditor integration với type support
+- ✅ includeOtherFields checkbox toggle
+- ✅ Type conversion: String, Number, Boolean, Array, Object
+- ✅ Drag-drop fields từ DataFieldsPanel
+- ✅ Add/remove key-value pairs dynamically
+
+**Dependencies**:
+- React Hook Form + Zod validation
+- Design system primitives (Checkbox, Button)
+- KeyValueEditor component (với allowType=true)
+
 ## 🎯 Khi nào sử dụng
 
 - Khi cần thêm field mới vào data
@@ -389,6 +405,55 @@ SET node trả về:
 - Check type được chọn đúng chưa
 - Check value có thể convert được không (ví dụ: `"abc"` không thể → number)
 - Xem console logs để debug conversion
+
+## 🔧 Development Guide
+
+### Cách Update Node
+
+#### 1. Thay đổi Schema (`schema.ts`)
+```typescript
+export const setConfigSchema = z.object({
+  fields: z.array(z.object({
+    key: z.string().min(1),
+    value: z.string(),
+    type: z.enum(["string", "number", "boolean", "array", "object"]),
+  })),
+  includeOtherFields: z.boolean().default(true),
+});
+```
+
+#### 2. Thêm Type Mới (`SetForm.tsx`)
+```typescript
+// Update type enum trong KeyValueEditor
+type: z.enum(["string", "number", "boolean", "array", "object", "date"]),
+
+// KeyValueEditor automatically handles new types
+```
+
+#### 3. Update Type Conversion (`runtime.ts`)
+```typescript
+function convertType(value: string, type: string) {
+  switch (type) {
+    case "string": return String(value);
+    case "number": return parseFloat(value) || 0;
+    case "boolean": return ["true", "1", "yes"].includes(value.toLowerCase());
+    case "array": return JSON.parse(value);
+    case "object": return JSON.parse(value);
+    case "date": return new Date(value).toISOString(); // NEW
+    default: return value;
+  }
+}
+```
+
+#### 4. Testing Checklist
+- [ ] Test includeOtherFields ON/OFF
+- [ ] Test all 5 type conversions
+- [ ] Test drag-drop từ DataFieldsPanel
+- [ ] Test add/remove fields trong KeyValueEditor
+- [ ] Test với array input (verify each item processed)
+- [ ] Test overwrite existing fields
+- [ ] Test token resolution trong values
+- [ ] Verify type conversion error handling
 
 **Token không resolve**:
 - Check token syntax: `{{steps.<node-key>.<field>}}`

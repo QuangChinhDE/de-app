@@ -1,5 +1,4 @@
 import { useMemo, useState, useEffect } from "react";
-import { SchemaForm } from "./SchemaForm";
 import { useFlowStore } from "../state/flow-store";
 import { nodeDefinitions, type NodeDefinitionKey } from "../nodes";
 import { generateFuzzValues } from "../utils/fuzz";
@@ -580,15 +579,29 @@ export function ConfigPanel(): JSX.Element {
       {/* Content */}
       <div className="flex-1 overflow-hidden">
         {activeTab === "config" ? (
-          <SchemaForm
-            schema={definition.schema}
-            initialValues={step.config}
-            onChange={(values) => updateConfig(step.key, values)}
-            onRun={() => handleRun()}
-            isRunning={runState?.status === "running"}
-            onFuzz={fuzzHandler}
-            stepOutputs={filteredStepOutputs}
-          />
+          // All nodes must have custom formComponent
+          definition.schema.formComponent ? (
+            <definition.schema.formComponent
+              schema={definition.schema}
+              value={step.config}
+              onChange={(values) => updateConfig(step.key, values)}
+              onRun={() => handleRun()}
+              isRunning={runState?.status === "running"}
+              onFuzz={fuzzHandler}
+              stepOutputs={filteredStepOutputs}
+            />
+          ) : (
+            <div className="flex h-full items-center justify-center p-4">
+              <div className="max-w-md rounded-lg border-2 border-rose-300 bg-rose-50 p-6 text-center">
+                <p className="mb-2 text-lg font-bold text-rose-700">⚠️ Missing Form Component</p>
+                <p className="text-sm text-rose-600">
+                  Node <code className="rounded bg-rose-100 px-2 py-1">{definition.key}</code> does not have a custom form component.
+                  <br />
+                  All nodes must define a <code className="rounded bg-rose-100 px-2 py-1">formComponent</code> property.
+                </p>
+              </div>
+            </div>
+          )
         ) : (
           <ResultView data={stepOutputs[step.key]} stepKey={step.key} />
         )}
