@@ -16,7 +16,7 @@ export async function runMergeNode(args: NodeRuntimeArgs): Promise<NodeRuntimeRe
   const inputCount = resolvedConfig.inputCount as number || 2;
   const removeDuplicates = resolvedConfig.removeDuplicates as boolean || false;
   
-  console.log(`[MERGE] Mode: ${mode}, Expected inputs: ${inputCount}`);
+
   
   // Collect data from each input handle
   const inputs: unknown[] = [];
@@ -28,7 +28,7 @@ export async function runMergeNode(args: NodeRuntimeArgs): Promise<NodeRuntimeRe
     if (inputData !== undefined && inputData !== null) {
       const unwrapped = smartUnwrap(inputData, "unknown");
       inputs.push(unwrapped);
-      console.log(`[MERGE] Input ${i + 1} (${handleId}): connected`);
+
     } else {
       console.warn(`[MERGE] Input ${i + 1} (${handleId}): not connected`);
     }
@@ -41,7 +41,7 @@ export async function runMergeNode(args: NodeRuntimeArgs): Promise<NodeRuntimeRe
     );
   }
   
-  console.log(`[MERGE] Processing ${inputs.length} inputs with mode: ${mode}`);
+
   
   switch (mode) {
     case "append":
@@ -82,7 +82,7 @@ function handleAppendMode(inputs: unknown[], removeDuplicates: boolean) {
   // Concatenate all arrays
   let result = arrays.flat();
   
-  console.log(`[MERGE:APPEND] Concatenated ${arrays.length} arrays: ${result.length} total items`);
+
   
   // Remove duplicates if requested
   if (removeDuplicates) {
@@ -93,7 +93,7 @@ function handleAppendMode(inputs: unknown[], removeDuplicates: boolean) {
       seen.add(key);
       return true;
     });
-    console.log(`[MERGE:APPEND] After removing duplicates: ${result.length} items`);
+
   }
   
   return { output: result };
@@ -118,7 +118,7 @@ function handleMergeMode(inputs: unknown[], strategy: string) {
     objects.push(input as Record<string, unknown>);
   }
   
-  console.log(`[MERGE:MERGE] Merging ${objects.length} objects with strategy: ${strategy}`);
+
   
   const result: Record<string, unknown> = {};
   
@@ -144,7 +144,7 @@ function handleMergeMode(inputs: unknown[], strategy: string) {
   }
   
   const uniqueKeys = Object.keys(result).length;
-  console.log(`[MERGE:MERGE] Result has ${uniqueKeys} unique keys`);
+
   
   return { output: result };
 }
@@ -171,8 +171,7 @@ function handleJoinMode(
     );
   }
   
-  console.log(`[MERGE:JOIN] ${joinType.toUpperCase()} JOIN on ${joinKey1} = ${joinKey2}`);
-  console.log(`[MERGE:JOIN] Left: ${input1.length} items, Right: ${input2.length} items`);
+
   
   // Build index for input2 for faster lookup
   const rightIndex = new Map<unknown, unknown[]>();
@@ -253,7 +252,7 @@ function handleJoinMode(
     }
   }
   
-  console.log(`[MERGE:JOIN] Result: ${result.length} items after ${joinType} join`);
+
   
   return { output: result };
 }

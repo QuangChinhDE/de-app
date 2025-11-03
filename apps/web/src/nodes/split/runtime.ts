@@ -21,8 +21,7 @@ export async function runSplitNode(args: NodeRuntimeArgs): Promise<NodeRuntimeRe
   let previousData: unknown = args.resolvedConfig.__previousOutput || null;
   previousData = smartUnwrap(previousData, args.previousNodeType);
 
-  console.log("[SPLIT] Mode:", mode, "| Field:", fieldPath);
-  console.log("[SPLIT] Input data:", previousData);
+
 
   // Mode: Manual field selection
   if (mode === "field" && fieldPath) {
@@ -35,7 +34,7 @@ export async function runSplitNode(args: NodeRuntimeArgs): Promise<NodeRuntimeRe
     const fieldValue = getFieldValue(previousData, cleanPath);
     
     if (Array.isArray(fieldValue)) {
-      console.log(`[SPLIT] Extracted array from field "${cleanPath}":`, fieldValue.length, "items");
+
       return { output: fieldValue };
     }
     
@@ -46,7 +45,7 @@ export async function runSplitNode(args: NodeRuntimeArgs): Promise<NodeRuntimeRe
   // Mode: Auto-detect array
   // Case 1: Input is already array
   if (Array.isArray(previousData)) {
-    console.log("[SPLIT] Input is already array:", previousData.length, "items");
+
     return { output: previousData };
   }
 
@@ -62,13 +61,13 @@ export async function runSplitNode(args: NodeRuntimeArgs): Promise<NodeRuntimeRe
     
     if (arrayFields.length === 1) {
       const [fieldName, arrayValue] = arrayFields[0];
-      console.log(`[SPLIT] Auto-extracted single array field "${fieldName}":`, (arrayValue as unknown[]).length, "items");
+
       return { output: arrayValue };
     }
     
     // Multiple arrays found - use first one
     const [firstFieldName, firstArrayValue] = arrayFields[0];
-    console.log(`[SPLIT] Multiple arrays found, using first: "${firstFieldName}":`, (firstArrayValue as unknown[]).length, "items");
+
     return { output: firstArrayValue };
   }
 

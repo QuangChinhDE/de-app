@@ -22,7 +22,7 @@ export async function runSortNode(args: NodeRuntimeArgs): Promise<NodeRuntimeRes
   // Auto-use previous output if items not provided
   if (items == null || items === "") {
     items = smartUnwrap(previousOutput, args.previousNodeType);
-    console.log("[SORT] 🎯 Using previous output as items");
+
   }
   
   // Validate array
@@ -34,7 +34,7 @@ export async function runSortNode(args: NodeRuntimeArgs): Promise<NodeRuntimeRes
   }
   
   if (items.length === 0) {
-    console.log("[SORT] ⚠️ Empty array provided");
+
     return {
       output: {
         items: [],
@@ -43,7 +43,7 @@ export async function runSortNode(args: NodeRuntimeArgs): Promise<NodeRuntimeRes
     };
   }
   
-  console.log(`[SORT] Sorting ${items.length} items by field "${field}" (${direction})`);
+
   
   // Create a copy to avoid mutating original
   const sortedItems = [...items];
@@ -101,7 +101,7 @@ export async function runSortNode(args: NodeRuntimeArgs): Promise<NodeRuntimeRes
     return direction === "asc" ? compareResult : -compareResult;
   });
   
-  console.log(`[SORT] ✅ Sorted ${sortedItems.length} items`);
+
   
   return {
     output: {

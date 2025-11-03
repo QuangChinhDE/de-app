@@ -272,28 +272,16 @@ const storeCreator = (set: SetState<FlowStore>, get: GetState<FlowStore>): FlowS
     const inputsByHandle: Record<string, unknown> = {};
     const incomingEdges = state.customEdges.filter((e) => e.target === stepKey);
     
-    console.log(`[FLOW] All customEdges for target ${stepKey}:`, incomingEdges);
-    
     if (step.schemaKey !== "manual") {
-      // Priority 1: Use edge connection if exists (supports branch selection)
       if (incomingEdges.length > 0) {
-        const primaryEdge = incomingEdges[0]; // Use first edge for previousOutput
+        const primaryEdge = incomingEdges[0];
         const sourceOutput = state.stepOutputs[primaryEdge.source];
         const sourceStep = state.steps.find((s) => s.key === primaryEdge.source);
-        
-        console.log(`[FLOW] Edge info:`, {
-          source: primaryEdge.source,
-          target: primaryEdge.target,
-          sourceHandle: primaryEdge.sourceHandle,
-          targetHandle: primaryEdge.targetHandle
-        });
         
         if (sourceOutput !== undefined && sourceStep) {
           previousNodeType = sourceStep.schemaKey as NodeDefinitionKey;
           
-          console.log(`[FLOW] Source step type: ${sourceStep.schemaKey}, has sourceHandle: ${!!primaryEdge.sourceHandle}`);
-          
-          // Smart branch detection for IF/SWITCH nodes
+          // Branch detection for IF/SWITCH nodes
           const isBranchingNode = (sourceStep.schemaKey === "if" || sourceStep.schemaKey === "switch");
           const hasBranchData = typeof sourceOutput === "object" && sourceOutput !== null && !Array.isArray(sourceOutput) &&
             (Object.prototype.hasOwnProperty.call(sourceOutput, 'TRUE') || Object.prototype.hasOwnProperty.call(sourceOutput, 'FALSE') || 
@@ -302,35 +290,23 @@ const storeCreator = (set: SetState<FlowStore>, get: GetState<FlowStore>): FlowS
           if (isBranchingNode && hasBranchData) {
             let extractedBranch: string | undefined;
             
-            // Priority 1: Use explicit sourceHandle
             if (primaryEdge.sourceHandle) {
               extractedBranch = primaryEdge.sourceHandle;
-            }
-            // Priority 2: DISABLE auto-detect for now - always use full output if sourceHandle missing
-            else {
-              console.log(`[FLOW] ❌ No sourceHandle provided for branching node ${primaryEdge.source} → using full output`);
-              console.log(`[FLOW] � This indicates an edge connection bug - sourceHandle should be preserved!`);
-              // Don't auto-detect to avoid wrong branch assignment
             }
             
             if (extractedBranch) {
               const branchData = (sourceOutput as Record<string, unknown>)[extractedBranch];
-              console.log(`[FLOW] Branch data for '${extractedBranch}':`, branchData);
               
               if (branchData !== undefined) {
-                previousOutput = branchData; // Use specific branch data
-                console.log(`[FLOW] ✅ Using branch '${extractedBranch}' from ${primaryEdge.source}`);
+                previousOutput = branchData;
               } else {
-                previousOutput = sourceOutput; // Fallback to full output
-                console.log(`[FLOW] ❌ Branch '${extractedBranch}' not found, using full output`);
+                previousOutput = sourceOutput;
               }
             } else {
-              previousOutput = sourceOutput; // No branch detected, use full output
-              console.log(`[FLOW] ⚠️ Branching node but no branch detected, using full output`);
+              previousOutput = sourceOutput;
             }
           } else {
-            previousOutput = sourceOutput; // Not a branching node, use full output
-            console.log(`[FLOW] Not a branching node or no branch data, using full output`);
+            previousOutput = sourceOutput;
           }
           
           if (previousOutput !== undefined) {
@@ -549,39 +525,9 @@ const storeCreator = (set: SetState<FlowStore>, get: GetState<FlowStore>): FlowS
     }));
   },
   removeEdge: (edgeId: string) => {
-    set((state) => {
-      // CRITICAL DEBUG: Log edge removal details
-      const edgeToRemove = state.customEdges.find(e => e.id === edgeId);
-      console.log(`[REMOVELEDGE] 🗑️ Removing edge:`, edgeToRemove);
-      
-      if (edgeToRemove) {
-        const sourceEdges = state.customEdges.filter(e => e.source === edgeToRemove.source);
-        console.log(`[REMOVELEDGE] 📋 All edges from source ${edgeToRemove.source} BEFORE removal:`, 
-          sourceEdges.map(e => ({
-            id: e.id,
-            target: e.target,
-            sourceHandle: e.sourceHandle,
-            targetHandle: e.targetHandle
-          }))
-        );
-        
-        const updatedEdges = state.customEdges.filter((e) => e.id !== edgeId);
-        const sourceEdgesAfter = updatedEdges.filter(e => e.source === edgeToRemove.source);
-        console.log(`[REMOVELEDGE] 📋 All edges from source ${edgeToRemove.source} AFTER removal:`, 
-          sourceEdgesAfter.map(e => ({
-            id: e.id,
-            target: e.target,
-            sourceHandle: e.sourceHandle,
-            targetHandle: e.targetHandle
-          }))
-        );
-        
-        return { customEdges: updatedEdges };
-      }
-      
-      console.log(`[REMOVELEDGE] ❌ Edge ${edgeId} not found!`);
-      return state;
-    });
+    set((state) => ({
+      customEdges: state.customEdges.filter((e) => e.id !== edgeId)
+    }));
   },
   saveNodePositions: (positions: Record<string, { x: number; y: number }>) => {
     set({ nodePositions: positions });
@@ -590,39 +536,7 @@ const storeCreator = (set: SetState<FlowStore>, get: GetState<FlowStore>): FlowS
 
 export const useFlowStore = create<FlowStore>(storeCreator);
 
-// Auto-load demo workflow on first load (DISABLED - start with empty canvas)
-// Uncomment below to enable auto-load demo workflow
-/*
-if (typeof window !== 'undefined') {
-  // Check if this is first load (no saved state)
-  const hasLoadedBefore = localStorage.getItem('workflow-loaded');
-  
-  // TEMP: Force reload for testing - remove this line later
-  localStorage.removeItem('workflow-loaded');
-  
-  if (!hasLoadedBefore) {
-    // Load demo workflow
-    fetch('/demo-workflow.json')
-      .then(res => {
-        if (!res.ok) {
-          throw new Error(`HTTP error! status: ${res.status}`);
-        }
-        return res.json();
-      })
-      .then(data => {
-        console.log('📦 Loading demo workflow...', data);
-        useFlowStore.getState().importFlow(data);
-        localStorage.setItem('workflow-loaded', 'true');
-        console.log('✅ Demo workflow loaded successfully');
-      })
-      .catch(err => {
-        console.error('❌ Failed to load demo workflow:', err);
-      });
-  } else {
-    console.log('ℹ️ Workflow already loaded before. Clear localStorage to reload.');
-  }
-}
-*/
+
 
 function extractMappings(steps: StepInstance[]): Record<string, unknown> {
   const mappings: Record<string, unknown> = {};

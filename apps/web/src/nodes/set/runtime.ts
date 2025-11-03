@@ -70,17 +70,9 @@ function getPathValue(target: unknown, pathPart: string): unknown {
 }
 
 export async function runSetNode(args: NodeRuntimeArgs): Promise<NodeRuntimeResult> {
-  console.log("[SET Runtime] Starting execution");
-  console.log("[SET Runtime] Raw config:", args.config);
-  console.log("[SET Runtime] Resolved config:", args.resolvedConfig);
-
   const includeOtherFields = Boolean(args.config.includeOtherFields ?? true);
-  const rawFields = (args.config.fields as FieldSet[]) ?? []; // Use RAW config, not resolved
+  const rawFields = (args.config.fields as FieldSet[]) ?? [];
   const previousData = args.resolvedConfig.__previousOutput || null;
-
-  console.log("[SET Runtime] Include other fields:", includeOtherFields);
-  console.log("[SET Runtime] Raw fields:", rawFields);
-  console.log("[SET Runtime] Previous data:", previousData);
 
   // Build step outputs context for token resolution
   const stepOutputs = args.resolvedConfig.__stepOutputs as Record<string, unknown> || {};
@@ -88,23 +80,23 @@ export async function runSetNode(args: NodeRuntimeArgs): Promise<NodeRuntimeResu
   // If previous data is array, process each item with its own context
   if (Array.isArray(previousData)) {
     const transformed = previousData.map((item, index) => {
-      console.log(`[SET] Processing item ${index}:`, item);
+
       return setFieldsOnItem(item, rawFields, includeOtherFields, stepOutputs);
     });
-    console.log("[SET] Transformed array, count:", transformed.length);
+
     return { output: transformed };
   }
 
   // If previous data is object, process it
   if (previousData && typeof previousData === "object") {
     const transformed = setFieldsOnItem(previousData, rawFields, includeOtherFields, stepOutputs);
-    console.log("[SET] Transformed object:", transformed);
+
     return { output: transformed };
   }
 
   // No previous data, create new object with set fields
   const newObject = setFieldsOnItem({}, rawFields, includeOtherFields, stepOutputs);
-  console.log("[SET] Created new object:", newObject);
+
   return { output: newObject };
 }
 
@@ -136,11 +128,11 @@ function setFieldsOnItem(
     // Convert to specified type if provided
     if (field.type) {
       value = convertToType(value, field.type);
-      console.log(`[SET] Converting "${field.key}" to ${field.type}: ${field.value} -> ${value}`);
+
     }
     
     result[field.key] = value;
-    console.log(`[SET] Set field "${field.key}" = ${value}`);
+
   });
 
   return result;
