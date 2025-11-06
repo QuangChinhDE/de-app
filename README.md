@@ -1,30 +1,134 @@
 # ⚡ Node Playground
 
-> **Visual Workflow Builder** - Xây dựng và test các workflow phức tạp thông qua giao diện kéo thả trực quan
+> **Visual Workflow Builder** - Low-code platform để xây dựng data pipelines phức tạp với giao diện drag-and-drop trực quan
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.4.0-blue?logo=typescript)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-18.3.1-blue?logo=react)](https://reactjs.org/)
 [![Vite](https://img.shields.io/badge/Vite-5.4.10-purple?logo=vite)](https://vitejs.dev/)
 [![TailwindCSS](https://img.shields.io/badge/TailwindCSS-3.4.13-blue?logo=tailwindcss)](https://tailwindcss.com/)
+[![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
+
+<div align="center">
+  <img src="./docs/screenshot.png" alt="Node Playground Screenshot" width="800">
+  <p><em>Visual workflow builder với real-time execution và smart data flow</em></p>
+</div>
+
+---
 
 ## 🎯 Tổng Quan
 
-**Node Playground** là một ứng dụng workflow builder cho phép người dùng tạo ra các luồng xử lý dữ liệu phức tạp thông qua giao diện drag-and-drop trực quan. Hệ thống hỗ trợ nhiều loại node khác nhau và tích hợp tính năng tự động kết nối, xử lý dữ liệu thông minh.
+**Node Playground** là một **low-code visual workflow platform** cho phép bạn xây dựng data transformation pipelines phức tạp mà không cần viết code. Hệ thống được thiết kế dựa trên kiến trúc pluggable executor pattern với clean separation of concerns, giúp dễ dàng maintain và mở rộng.
+
+### 💡 Giải Quyết Vấn Đề Gì?
+
+- ❌ **Before**: Viết scripts thủ công để transform data, API integration → khó maintain, khó test
+- ✅ **After**: Visual workflow với 14+ pre-built nodes → drag-drop, configure, run
+- ❌ **Before**: Testing data pipelines đòi hỏi deploy và run production code
+- ✅ **After**: Real-time testing trong UI với sample data và instant feedback
+- ❌ **Before**: Complex branching logic (IF/SWITCH) khó visualize và debug
+- ✅ **After**: Visual branches với per-branch output tracking và token access
 
 ### ✨ Tính Năng Nổi Bật
 
-- **🎨 Visual Workflow Builder**: Xây dựng workflow bằng cách kéo thả các node
-- **🔗 Auto Connection**: Tự động kết nối các node theo thứ tự logic
-- **📦 Smart Data Flow**: Truyền dữ liệu tự động giữa các node với token resolution
-- **🎛️ Multiple Input Support**: Hỗ trợ MERGE node với nhiều input (2-5 inputs)
-- **🔄 Real-time Preview**: Xem kết quả ngay lập tức khi chạy workflow
-- **🏷️ Drag-and-Drop Fields**: Kéo thả fields từ output để tạo tokens tự động
+#### 🎨 **Visual Workflow Builder**
+- Drag-and-drop interface với ReactFlow
+- Auto-layout algorithm cho clean canvas
+- Visual node connections với colored handles
+- Real-time status indicators (idle/running/success/error)
+
+#### 🔗 **Smart Auto-Connection**
+- Tự động kết nối nodes theo thứ tự thêm vào
+- Intelligent data flow với `__previousOutput`
+- Multi-input support cho MERGE node (2-5 inputs)
+- Click-to-delete edges
+
+#### 📦 **Advanced Data Flow**
+- **Token Resolution**: `{{steps.nodeKey.fieldPath}}` syntax
+- **Auto-unwrap Arrays**: Smart per-item processing
+- **Branch-specific Access**: `{{steps.if1-TRUE.field}}`
+- **Loop Context**: `{{$item}}`, `{{$index}}`, `{{$total}}`
+
+#### 🎛️ **14+ Pre-built Nodes**
+- **Triggers**: Manual (JSON/Form modes)
+- **Actions**: HTTP (REST API với 4 body modes)
+- **Logic**: IF, SWITCH (conditional branching)
+- **Utilities**: SET, SPLIT, MERGE, FILTER, LOOP
+- **Transform**: SORT, LIMIT, WAIT, CODE, AGGREGATE
+
+#### 🏷️ **Drag-and-Drop Field Mapping**
+- Run node để see output → Click **📦 ▼** button
+- Drag fields vào config inputs → Auto-generate tokens
+- Visual drop zones với hover feedback
+- Type-aware field suggestions
+
+#### ⚡ **Real-time Execution & Preview**
+- Run individual nodes hoặc entire flow
+- Live output preview trong ResultPanel
+- Tabs: Request/Response/Logs/Data/Execution Timeline
+- Per-item execution data với lineage tracking
+
+---
+
+## 📚 Documentation
+
+- 📖 **[README.md](./README.md)** - Tổng quan sản phẩm và hướng dẫn sử dụng
+- 🛠️ **[DEVELOPMENT_GUIDE.md](./DEVELOPMENT_GUIDE.md)** - Hướng dẫn development chi tiết cho developers
+- 📦 **[OUTPUT_FORMAT_STANDARD.md](./apps/web/src/nodes/OUTPUT_FORMAT_STANDARD.md)** - Node output format standard
+- 📝 **[Node READMEs](./apps/web/src/nodes/)** - Chi tiết từng node type
+
+---
 
 ## 🏗️ Kiến Trúc Hệ Thống
 
+### � Core Architecture
+
+Node Playground được xây dựng trên **Execution Layer Architecture** với 3 core components:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    UI Layer (React)                      │
+│  ┌────────────┐  ┌────────────┐  ┌────────────┐        │
+│  │ FlowCanvas │  │ConfigPanel │  │ResultPanel │        │
+│  └────────────┘  └────────────┘  └────────────┘        │
+└──────────────────────┬──────────────────────────────────┘
+                       │
+┌──────────────────────▼──────────────────────────────────┐
+│              State Management (Zustand)                  │
+│                   flow-store.ts                          │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │ runStep() → Build ExecutionContext              │   │
+│  │           → Call executeWithRegistry()          │   │
+│  │           → Post-process & Store Results        │   │
+│  └─────────────────────────────────────────────────┘   │
+└──────────────────────┬──────────────────────────────────┘
+                       │
+┌──────────────────────▼──────────────────────────────────┐
+│           Execution Layer (Pluggable Executors)          │
+│  ┌─────────────────┐  ┌──────────────┐  ┌─────────┐   │
+│  │SingleOutputExec │  │BranchExecutor│  │LoopExec │   │
+│  │ (manual, http,  │  │  (if, switch)│  │ (loop)  │   │
+│  │  set, split...) │  └──────────────┘  └─────────┘   │
+│  └─────────────────┘                                    │
+└──────────────────────┬──────────────────────────────────┘
+                       │
+┌──────────────────────▼──────────────────────────────────┐
+│              Node Runtime Layer                          │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐             │
+│  │  manual  │  │   http   │  │    if    │   ... (14+) │
+│  │ /runtime │  │ /runtime │  │ /runtime │             │
+│  └──────────┘  └──────────┘  └──────────┘             │
+└─────────────────────────────────────────────────────────┘
+```
+
+**Lợi ích của architecture này**:
+- ✅ **Separation of Concerns**: Mỗi layer có responsibility rõ ràng
+- ✅ **Testability**: Test executors độc lập với store và UI
+- ✅ **Extensibility**: Thêm node type mới = thêm executor mới
+- ✅ **Maintainability**: Bug ở layer nào fix ở đó, không ảnh hưởng layer khác
+
 ### 🎨 3-Layer Form Architecture
 
-Hệ thống sử dụng **kiến trúc 3 tầng** để tối ưu hóa việc quản lý forms:
+Frontend sử dụng **3-layer form architecture** để đảm bảo consistency và reusability:
 
 ```
 Layer 1: Design System Primitives
@@ -129,28 +233,40 @@ node-playground/
 └── package.json               # Workspace configuration
 ```
 
-### 🔧 Stack Công Nghệ
+### 🔧 Tech Stack
 
-#### Frontend (Web App)
-- **React 18.3.1** - UI framework với hooks và functional components
-- **TypeScript 5.4.0** - Type safety và development experience  
-- **Vite 5.4.10** - Build tool với HMR và ESM support
-- **TailwindCSS 3.4.13** - Utility-first CSS framework
-- **ReactFlow (@xyflow/react)** - Visual flow builder library
-- **Zustand 4.5.4** - State management
-- **React Hook Form 7.53.0** - Form handling với validation
-- **Zod 3.23.8** - Schema validation
-- **React DnD 16.0.1** - Drag and drop functionality
+#### Frontend (apps/web)
+| Technology | Version | Purpose |
+|-----------|---------|---------|
+| **React** | 18.3.1 | UI framework với hooks và functional components |
+| **TypeScript** | 5.4.0 | Type safety và superior DX |
+| **Vite** | 5.4.10 | Lightning-fast build tool với HMR |
+| **TailwindCSS** | 3.4.13 | Utility-first CSS framework |
+| **ReactFlow** | @xyflow/react | Visual node-based flow builder |
+| **Zustand** | 4.5.4 | Lightweight state management |
+| **React Hook Form** | 7.53.0 | Performant form library với validation |
+| **Zod** | 3.23.8 | TypeScript-first schema validation |
+| **React DnD** | 16.0.1 | Drag-and-drop functionality |
 
-#### Backend (Server App)  
-- **Node.js** với **Express**
-- **TypeScript** cho type safety
+#### Backend (apps/server)
+| Technology | Purpose |
+|-----------|---------|
+| **Node.js** | Runtime environment |
+| **Express** | Web framework |
+| **TypeScript** | Type-safe backend |
 
 #### Development Tools
-- **ESLint** - Code linting
-- **Prettier** - Code formatting  
-- **npm workspaces** - Monorepo management
-- **Concurrently** - Parallel script execution
+| Tool | Purpose |
+|------|---------|
+| **ESLint** | Code linting and quality enforcement |
+| **Prettier** | Code formatting |
+| **npm workspaces** | Monorepo management |
+| **Concurrently** | Run multiple dev servers in parallel |
+
+#### Key Libraries & Utilities
+- **lodash** - Utility functions cho data transformation
+- **dayjs** - Date/time manipulation
+- **axios** - HTTP client cho node runtimes
 
 ## 🚀 Cài Đặt & Chạy
 
@@ -189,24 +305,123 @@ npm run build
 - **Frontend**: http://localhost:5173
 - **Backend API**: http://localhost:3000
 
+---
+
 ## 🎮 Hướng Dẫn Sử Dụng
 
-### 🏃‍♂️ Quick Start - 3 Bước Đơn Giản
+### 🏃‍♂️ Quick Start Guide
 
-#### 1️⃣ **Thêm Node**
-- Kéo node từ **Sidebar** vào **Canvas**
-- Hệ thống tự động kết nối theo thứ tự
-- Các node được auto-layout thông minh
+#### 1️⃣ **Add Nodes to Canvas**
+1. Click node từ **Sidebar** (hoặc drag vào canvas)
+2. Node được tự động add vào canvas với auto-layout
+3. Các nodes được auto-connect theo thứ tự thêm vào
+4. Visual indicators: 🟡 Idle → 🔵 Running → 🟢 Success / 🔴 Error
 
-#### 2️⃣ **Cấu Hình Node**
-- Click chọn node để mở **Config Panel**
-- Điền các thông tin cần thiết (URL, điều kiện, v.v.)
-- Sử dụng **Fuzz button** để generate test data
+#### 2️⃣ **Configure Nodes**
+1. Click chọn node để open **Config Panel** (right sidebar)
+2. Điền config fields:
+   - **Simple values**: Nhập text/number trực tiếp
+   - **Tokens**: Use `{{steps.nodeKey.field}}` syntax
+   - **Drag-drop**: Kéo fields từ Data Panel vào inputs
+3. Click **💡 Fuzz** button để generate test data (available cho một số nodes)
+4. Form validation real-time với error messages
 
-#### 3️⃣ **Chạy & Xem Kết Quả**
-- Click **RUN** button trên node hoặc **Run Flow**
-- Xem kết quả real-time trong **Results Panel**
-- Tabs: Request/Response/Logs/Data
+#### 3️⃣ **Run & View Results**
+1. **Run single node**: Click **▶ RUN** button trên node hoặc trong config panel
+2. **Run entire flow**: Click **▶ Run Flow** button (toolbar)
+3. **View results** trong **Result Panel** (bottom):
+   - **📄 Output**: Formatted JSON output
+   - **📊 Data**: Structured data tree view
+   - **📋 Logs**: Execution logs và debugging info
+   - **⏱️ Timeline**: Execution timeline với duration
+4. **Access fields**: Click **📦 ▼** button để show draggable fields
+
+### 🎓 Common Workflows
+
+#### Workflow 1: Fetch & Transform API Data
+
+```
+MANUAL → HTTP → SET → FILTER
+  ↓       ↓      ↓       ↓
+ [id:1]  GET    Add     Keep
+         /api  field   active
+         
+Result: Transformed & filtered API data
+```
+
+**Steps**:
+1. **MANUAL**: Provide initial data hoặc empty trigger
+2. **HTTP**: GET request to API endpoint
+3. **SET**: Add computed fields (e.g., `fullName` = `firstName + lastName`)
+4. **FILTER**: Keep only active users (`status === 'active'`)
+
+#### Workflow 2: Conditional Branching
+
+```
+MANUAL → IF → SET (TRUE branch)
+         ↓ 
+         └→ SET (FALSE branch)
+         
+Result: Different transformations based on condition
+```
+
+**Steps**:
+1. **MANUAL**: Sample data với mixed conditions
+2. **IF**: Condition: `age > 18`
+3. **SET (TRUE)**: Add field `category = 'adult'`
+4. **SET (FALSE)**: Add field `category = 'minor'`
+
+#### Workflow 3: Multi-Case Routing
+
+```
+MANUAL → SWITCH → SET (case 0)
+                ↓
+                ├→ SET (case 1)
+                └→ SET (default)
+                
+Result: Route data theo category/status
+```
+
+**Steps**:
+1. **MANUAL**: Data với field `category`
+2. **SWITCH**: Switch on field `category`
+   - Case 0: `category === 'A'`
+   - Case 1: `category === 'B'`
+   - Default: All others
+3. **SET nodes**: Different transformations per case
+
+#### Workflow 4: Merge Multiple Sources
+
+```
+HTTP (API 1) ──┐
+               ├→ MERGE → SET → FILTER
+HTTP (API 2) ──┘
+               
+Result: Combined data from multiple APIs
+```
+
+**Steps**:
+1. **HTTP (API 1)**: Fetch users from API 1
+2. **HTTP (API 2)**: Fetch orders from API 2
+3. **MERGE**: JOIN mode với key `userId`
+4. **SET**: Add computed fields
+5. **FILTER**: Keep valid records
+
+#### Workflow 5: Batch Processing
+
+```
+MANUAL → LOOP → SET (executed per-item)
+         ↓
+       Items processed in batches
+       
+Result: Per-item transformation với batch control
+```
+
+**Steps**:
+1. **MANUAL**: Array of items
+2. **LOOP**: Config batch size = 10, pause = 100ms
+3. **SET**: Transform using `{{$item.field}}` tokens
+4. Result: All items processed với rate limiting
 
 ### 🎯 Các Loại Node Chính (14 Nodes)
 

@@ -74,7 +74,7 @@ export function HttpForm({
 
   return (
     <form className="flex h-full flex-col" onSubmit={submitHandler}>
-      {/* Header with tabs and Run button */}
+      {/* Header with tabs */}
       <div className="flex items-center gap-2 border-b border-ink-200 px-4 py-2">
         <button
           type="button"
@@ -88,17 +88,6 @@ export function HttpForm({
         >
           Inputs
         </button>
-        
-        <div className="ml-auto">
-          <Button
-            type="submit"
-            variant="primary"
-            size="md"
-            disabled={isRunning}
-          >
-            {isRunning ? "Running..." : "Run test"}
-          </Button>
-        </div>
       </div>
 
       {/* Form content */}

@@ -3,10 +3,14 @@ import type {
   FlowConfig,
   RunRecord,
   SampleCatalogEntry,
+  INodeExecutionOutput,
+  AdvancedOptions,
 } from "@node-playground/types";
 import { nodeDefinitions, type NodeDefinitionKey } from "../nodes";
 import { resolveTokens, maskSensitive } from "../utils/expression";
+import { executeWithRegistry } from "./execution";
 import type { HttpRunResult } from "@node-playground/types";
+import { log } from "../utils/logger";
 
 // Helper to check if value is object
 function isObject(val: unknown): val is Record<string, unknown> {
@@ -42,6 +46,68 @@ function flattenOutput(data: unknown): unknown {
   }
   
   return data;
+}
+
+// Helper to get nested value using dot notation
+function getNestedValue(obj: unknown, path: string): unknown {
+  if (!isObject(obj)) return undefined;
+  
+  const keys = path.split('.');
+  let current: unknown = obj;
+  
+  for (const key of keys) {
+    if (!isObject(current)) return undefined;
+    current = current[key];
+  }
+  
+  return current;
+}
+
+// Apply advanced options (post-processing): Wait → Sort → Limit
+async function applyAdvancedOptions(data: unknown, options: AdvancedOptions): Promise<unknown> {
+  let result = data;
+  
+  // 1. Wait (delay execution)
+  if (options.wait?.enabled && options.wait.duration > 0) {
+    await new Promise(resolve => setTimeout(resolve, options.wait!.duration));
+  }
+  
+  // 2. Sort (only works on arrays)
+  if (options.sort?.enabled && options.sort.field && Array.isArray(result)) {
+    const field = options.sort.field;
+    const order = options.sort.order;
+    
+    result = [...result].sort((a, b) => {
+      const aVal = getNestedValue(a, field);
+      const bVal = getNestedValue(b, field);
+      
+      // Handle undefined/null
+      if (aVal === undefined || aVal === null) return 1;
+      if (bVal === undefined || bVal === null) return -1;
+      
+      // Compare values
+      let comparison = 0;
+      if (typeof aVal === 'string' && typeof bVal === 'string') {
+        comparison = aVal.localeCompare(bVal);
+      } else if (typeof aVal === 'number' && typeof bVal === 'number') {
+        comparison = aVal - bVal;
+      } else {
+        comparison = String(aVal).localeCompare(String(bVal));
+      }
+      
+      return order === 'asc' ? comparison : -comparison;
+    });
+  }
+  
+  // 3. Limit (skip/take)
+  if (options.limit?.enabled && Array.isArray(result)) {
+    const skip = options.limit.skip || 0;
+    const take = options.limit.take || result.length;
+    
+    result = result.slice(skip, skip + take);
+  }
+  
+  return result;
 }
 
 export interface StepInstance {
@@ -89,6 +155,7 @@ interface FlowStoreActions {
   removeStep: (stepKey: string) => void;
   reorderSteps: (sourceIndex: number, targetIndex: number) => void;
   selectStep: (stepKey?: string) => void;
+  renameStep: (stepKey: string, newName: string) => { success: boolean; error?: string };
   updateConfig: (stepKey: string, data: Record<string, unknown>) => void;
   runStep: (stepKey: string, skipDependencies?: boolean, originalStepKey?: string) => Promise<void>;
   runFlow: () => Promise<void>;
@@ -150,16 +217,52 @@ const storeCreator = (set: SetState<FlowStore>, get: GetState<FlowStore>): FlowS
     }
 
     set((state) => {
-      const index = state.steps.filter((step) => step.schemaKey === schemaKey).length + 1;
-      const key = `${schemaKey}${index}`;
+      // Generate unique name first, then derive key from name
+      // This ensures key and name are always in sync
+      const sameTypeNodes = state.steps.filter((step) => step.schemaKey === schemaKey);
+      const index = sameTypeNodes.length + 1;
+      
+      // Ensure name is unique by checking existing names
+      let finalName = `${definition.schema.name}`;
+      let nameIndex = index;
+      
+      if (index > 1 || state.steps.some(s => s.name === finalName)) {
+        finalName = `${definition.schema.name} ${nameIndex}`;
+      }
+      
+      // Double check name uniqueness
+      while (state.steps.some(s => s.name === finalName)) {
+        nameIndex++;
+        finalName = `${definition.schema.name} ${nameIndex}`;
+      }
+      
+      // Derive key from name: normalize to lowercase, remove spaces, keep alphanumeric only
+      // Example: "IF 2" -> "if2", "HTTP Request 3" -> "httprequest3"
+      const key = finalName.toLowerCase().replace(/\s+/g, '').replace(/[^a-z0-9]/g, '');
+      
+      // Ensure key uniqueness (should be guaranteed by unique name, but double check)
+      let finalKey = key;
+      let keyIndex = 1;
+      while (state.steps.some(s => s.key === finalKey)) {
+        keyIndex++;
+        finalKey = `${key}${keyIndex}`;
+      }
+      
       const now = new Date().toISOString();
       const step: StepInstance = {
-        key,
+        key: finalKey,
         schemaKey,
-        name: `${definition.schema.name} ${index}`,
+        name: finalName,
         config: definition.createInitialConfig(),
         createdAt: now,
       };
+      
+      log.success('Node added to workflow', { 
+        nodeKey: step.key, 
+        stepName: step.name,
+        nodeType: schemaKey 
+      });
+      
       return {
         steps: [...state.steps, step],
         selectedStepKey: key,
@@ -205,12 +308,91 @@ const storeCreator = (set: SetState<FlowStore>, get: GetState<FlowStore>): FlowS
     });
   },
   selectStep: (stepKey?: string) => set({ selectedStepKey: stepKey }),
-  updateConfig: (stepKey: string, data: Record<string, unknown>) => {
+  renameStep: (stepKey: string, newName: string) => {
+    const state = get();
+    const trimmedName = newName.trim();
+    
+    // Validate: không được trống
+    if (!trimmedName) {
+      return { success: false, error: "Name cannot be empty" };
+    }
+    
+    // Validate: không được trùng tên (case-insensitive)
+    const isDuplicate = state.steps.some(
+      (step) => step.key !== stepKey && step.name.toLowerCase() === trimmedName.toLowerCase()
+    );
+    
+    if (isDuplicate) {
+      return { success: false, error: `Name "${trimmedName}" already exists` };
+    }
+    
+    // Update name
     set((state) => ({
       steps: state.steps.map((step) =>
-        step.key === stepKey ? { ...step, config: { ...step.config, ...data } } : step
+        step.key === stepKey ? { ...step, name: trimmedName } : step
       ),
     }));
+    
+    return { success: true };
+  },
+  updateConfig: (stepKey: string, data: Record<string, unknown>) => {
+    log.debug('Config update requested', {
+      nodeKey: stepKey,
+      dataKeys: Object.keys(data).join(', '),
+      hasFields: 'fields' in data,
+      isFieldsArray: Array.isArray(data.fields)
+    });
+    
+    set((state) => {
+      const targetStep = state.steps.find(s => s.key === stepKey);
+      if (targetStep) {
+        log.debug('Config before update', {
+          nodeKey: stepKey,
+          configKeys: Object.keys(targetStep.config).join(', ')
+        });
+      }
+      
+      const updatedSteps = state.steps.map((step) => {
+        if (step.key !== stepKey) return step;
+        
+        // Deep clone data to prevent shared references between nodes
+        const clonedData = JSON.parse(JSON.stringify(data));
+        const newConfig = { ...step.config, ...clonedData };
+        
+        log.debug('Config updated with deep clone', {
+          nodeKey: stepKey,
+          configKeys: Object.keys(newConfig).join(', ')
+        });
+        
+        return { ...step, config: newConfig };
+      });
+      
+      // Check if any other steps share the same fields reference
+      log.debug('Validating config references across steps');
+      updatedSteps.forEach(step => {
+        if (step.config.fields && Array.isArray(step.config.fields)) {
+          const isSameAsUpdatedData = step.config.fields === data.fields;
+          if (isSameAsUpdatedData && step.key !== stepKey) {
+            log.error('Shared config reference detected!', undefined, {
+              affectedNodeKey: step.key,
+              targetNodeKey: stepKey,
+              issue: 'Multiple nodes sharing same config object reference'
+            });
+          }
+        }
+        
+        // Log all configs for debugging (only for SET nodes)
+        if (step.schemaKey === 'set') {
+          log.debug('SET node config state', {
+            nodeKey: step.key,
+            stepName: step.name,
+            fieldCount: Array.isArray(step.config.fields) ? step.config.fields.length : 0
+          });
+        }
+      });
+      
+      return { steps: updatedSteps };
+    });
   },
   runStep: async (stepKey: string, skipDependencies = false, originalStepKey?: string) => {
     const state = get();
@@ -292,6 +474,23 @@ const storeCreator = (set: SetState<FlowStore>, get: GetState<FlowStore>): FlowS
             
             if (primaryEdge.sourceHandle) {
               extractedBranch = primaryEdge.sourceHandle;
+              
+              // Normalize IF node handles: "true" → "TRUE", "false" → "FALSE"
+              if (sourceStep.schemaKey === "if") {
+                extractedBranch = extractedBranch.toUpperCase();
+              }
+            } else {
+              // FALLBACK: Edge missing sourceHandle (old edge or import)
+              // Try to detect from previous run's item lineage
+              const targetRunState = state.stepRunStates[stepKey];
+              const targetRunRecord = targetRunState?.lastRun;
+              
+              if (targetRunRecord?.source && targetRunRecord.source.length > 0) {
+                const sourceInfo = targetRunRecord.source.find(s => s.previousNode === primaryEdge.source);
+                if (sourceInfo?.previousNodeOutputKey) {
+                  extractedBranch = sourceInfo.previousNodeOutputKey;
+                }
+              }
             }
             
             if (extractedBranch) {
@@ -336,7 +535,15 @@ const storeCreator = (set: SetState<FlowStore>, get: GetState<FlowStore>): FlowS
         
         // Extract branch data if connecting from IF/SWITCH
         if (edge.sourceHandle && typeof sourceOutput === "object" && sourceOutput !== null && !Array.isArray(sourceOutput)) {
-          const branchData = (sourceOutput as Record<string, unknown>)[edge.sourceHandle];
+          const sourceStep = state.steps.find(s => s.key === edge.source);
+          let normalizedHandle = edge.sourceHandle;
+          
+          // Normalize IF node handles: "true" → "TRUE", "false" → "FALSE"
+          if (sourceStep?.schemaKey === "if") {
+            normalizedHandle = edge.sourceHandle.toUpperCase();
+          }
+          
+          const branchData = (sourceOutput as Record<string, unknown>)[normalizedHandle];
           inputsByHandle[handleId] = branchData !== undefined ? branchData : sourceOutput;
         } else {
           inputsByHandle[handleId] = sourceOutput;
@@ -348,43 +555,125 @@ const storeCreator = (set: SetState<FlowStore>, get: GetState<FlowStore>): FlowS
     resolvedConfig = { ...resolvedConfig, __stepOutputs: tokenContext };
 
     try {
-      const runtimeResult = await definition.run({
-        config: step.config,
+      // Build execution context for executor registry
+      const executionContext = {
+        step,
+        definition,
         resolvedConfig,
         previousOutput,
         previousNodeType,
-        currentNodeKey: stepKey,
-        allStepOutputs: state.stepOutputs,
-        inputsByHandle, // Add inputs from multiple handles
-      });
-      const duration = runtimeResult.durationMs ?? performance.now() - start;
-      
-      // Flatten output to normalize data structure
-      const flattenedOutput = flattenOutput(runtimeResult.output);
-      
+        tokenContext,
+        allSteps: state.steps,
+        allEdges: state.customEdges,
+        stepOutputs: state.stepOutputs,
+      };
+
+      const executionResult = await executeWithRegistry(executionContext as any);
+      const runtimeResult = executionResult.runtimeResult;
+      const duration = runtimeResult?.durationMs ?? performance.now() - start;
+
+      // Normalize output for executionData conversion
+      let normalizedOutput: unknown;
+      if (runtimeResult && runtimeResult.outputs && Array.isArray(runtimeResult.outputs)) {
+        const map: Record<string, unknown> = {};
+        runtimeResult.outputs.forEach((o: any) => { map[String(o.label)] = o.data; });
+        normalizedOutput = map;
+      } else {
+        normalizedOutput = runtimeResult.output;
+      }
+
+      // Flatten
+      let flattenedOutput: unknown = flattenOutput(normalizedOutput);
+
+      // Apply advanced options
+      if (step.config.advanced) {
+        flattenedOutput = await applyAdvancedOptions(flattenedOutput, step.config.advanced);
+      }
+
+      // Determine input executionData and sourceOutputIndex (same logic as before)
+      let inputExecutionData: INodeExecutionOutput | undefined;
+      let sourceOutputIndex: number | undefined;
+      if (incomingEdges.length > 0) {
+        const primaryEdge = incomingEdges[0];
+        const sourceRunState = state.stepRunStates[primaryEdge.source];
+        inputExecutionData = sourceRunState?.lastRun?.executionData;
+
+        if (primaryEdge.sourceHandle && inputExecutionData) {
+          const sourceStep = state.steps.find(s => s.key === primaryEdge.source);
+          if (sourceStep?.schemaKey === "if") {
+            const normalizedHandle = primaryEdge.sourceHandle.toUpperCase();
+            sourceOutputIndex = normalizedHandle === "TRUE" ? 0 : 1;
+          } else if (sourceStep?.schemaKey === "switch") {
+            sourceOutputIndex = inputExecutionData.outputLabels?.indexOf(primaryEdge.sourceHandle) ?? 0;
+          }
+        }
+      }
+
+      const { convertToExecutionData } = await import("../utils/run-data");
+      const executionData = convertToExecutionData(flattenedOutput, step.schemaKey, inputExecutionData, sourceOutputIndex);
+
+      // Build source tracking
+      const source: Array<{previousNode: string; previousNodeOutput?: number; previousNodeOutputKey?: string}> = [];
+      for (const edge of incomingEdges) {
+        if (state.stepOutputs[edge.source] !== undefined) {
+          const sourceStep = state.steps.find(s => s.key === edge.source);
+          let outputIndex: number | undefined;
+          let outputKey: string | undefined;
+
+          if (edge.sourceHandle) {
+            if (sourceStep?.schemaKey === "if") {
+              outputKey = edge.sourceHandle.toUpperCase();
+              outputIndex = outputKey === "TRUE" ? 0 : 1;
+            } else if (sourceStep?.schemaKey === "switch") {
+              outputKey = edge.sourceHandle;
+              if (outputKey.startsWith("case_")) outputIndex = parseInt(outputKey.substring(5), 10);
+            }
+          } else {
+            outputIndex = 0;
+          }
+
+          source.push({ previousNode: edge.source, previousNodeOutput: outputIndex, previousNodeOutputKey: outputKey });
+        }
+      }
+
       const runRecord: RunRecord = {
         stepKey: step.key,
         resolvedInput: maskSensitive(resolvedConfig),
         output: maskSensitive(flattenedOutput),
-        status: runtimeResult.status,
+        executionData,
+        status: runtimeResult?.status,
         durationMs: duration,
         at: new Date().toISOString(),
+        source: source.length > 0 ? source : undefined,
       };
 
+      // Build final outputsToStore applying advanced options results
+      const finalOutputs: Record<string, unknown> = {};
+      if (executionResult.isBranchingNode && isObject(flattenedOutput)) {
+        const map = flattenedOutput as Record<string, unknown>;
+        Object.keys(map).forEach((label) => {
+          finalOutputs[`${step.key}-${label}`] = map[label];
+        });
+      } else {
+        finalOutputs[step.key] = flattenedOutput;
+      }
+
+      // Merge any outputsToStore provided by executor (but let finalOutputs take precedence)
+      const mergedOutputs = { ...(executionResult.outputsToStore || {}), ...finalOutputs };
+
       set((store) => ({
-        stepOutputs: { ...store.stepOutputs, [step.key]: flattenedOutput },
+        stepOutputs: { ...store.stepOutputs, ...mergedOutputs },
         stepRunStates: {
           ...store.stepRunStates,
           [step.key]: {
             status: "success",
             lastRun: runRecord,
-            requestPreview: runtimeResult.requestPreview,
-            response: runtimeResult.response,
+            requestPreview: runtimeResult?.requestPreview,
+            response: runtimeResult?.response,
           },
         },
         runTimeline: [...store.runTimeline, runRecord],
-        showResultPanel: true, // Auto-open result panel on successful run
-        // Select only the original step that user clicked Run on
+        showResultPanel: true,
         selectedStepKey: stepKey === targetStepKey ? targetStepKey : store.selectedStepKey,
       }));
     } catch (error) {
@@ -456,7 +745,14 @@ const storeCreator = (set: SetState<FlowStore>, get: GetState<FlowStore>): FlowS
       steps: stateSnapshot.steps.map((step) => ({
         key: step.key,
         type: step.schemaKey,
+        name: step.name,  // Preserve name for import
         config: step.config,
+      })),
+      edges: stateSnapshot.customEdges.map((edge) => ({
+        source: edge.source,
+        target: edge.target,
+        sourceHandle: edge.sourceHandle,
+        targetHandle: edge.targetHandle,
       })),
       mappings: extractMappings(stateSnapshot.steps),
     };
@@ -465,7 +761,8 @@ const storeCreator = (set: SetState<FlowStore>, get: GetState<FlowStore>): FlowS
   importFlow: (flow: FlowConfig) => {
     const steps = flow.steps.map((step): StepInstance => {
       const definition = nodeDefinitions[step.type as NodeDefinitionKey];
-      const name = definition ? definition.schema.name : step.type;
+      // Preserve name from export, fallback to definition name if not present
+      const name = step.name || (definition ? definition.schema.name : step.type);
       return {
         key: step.key,
         schemaKey: step.type as NodeDefinitionKey,
@@ -480,8 +777,18 @@ const storeCreator = (set: SetState<FlowStore>, get: GetState<FlowStore>): FlowS
       stepRunStates[step.key] = { status: "idle" };
     });
 
+    // Restore edges if present
+    const customEdges: CustomEdge[] = (flow.edges || []).map((edge, index) => ({
+      id: `e${edge.source}-${edge.target}-${index}`,
+      source: edge.source,
+      target: edge.target,
+      sourceHandle: edge.sourceHandle,
+      targetHandle: edge.targetHandle,
+    }));
+
     set({
       steps,
+      customEdges,
       selectedStepKey: steps[0]?.key,
       stepOutputs: {},
       stepRunStates,
@@ -517,7 +824,38 @@ const storeCreator = (set: SetState<FlowStore>, get: GetState<FlowStore>): FlowS
     }));
   },
   updateEdges: (edges: CustomEdge[]) => {
-    set({ customEdges: edges });
+    set((state) => {
+      const newStepOutputs = { ...state.stepOutputs };
+      
+      // Auto-create placeholder outputs for branching nodes when edge is created
+      edges.forEach(edge => {
+        if (edge.sourceHandle) {
+          const sourceStep = state.steps.find(s => s.key === edge.source);
+          
+          // Check if source is branching node (IF/SWITCH)
+          if (sourceStep && (sourceStep.schemaKey === 'if' || sourceStep.schemaKey === 'switch')) {
+            let branchKey = edge.sourceHandle;
+            
+            // Normalize IF handles: "true" → "TRUE", "false" → "FALSE"
+            if (sourceStep.schemaKey === 'if') {
+              branchKey = branchKey.toUpperCase();
+            }
+            
+            const outputKey = `${edge.source}-${branchKey}`;
+            
+            // Create placeholder if not exists (empty array)
+            if (newStepOutputs[outputKey] === undefined) {
+              newStepOutputs[outputKey] = [];
+            }
+          }
+        }
+      });
+      
+      return { 
+        customEdges: edges,
+        stepOutputs: newStepOutputs
+      };
+    });
   },
   addEdge: (edge: CustomEdge) => {
     set((state) => ({

@@ -94,18 +94,7 @@ export function SimpleNodeForm({
 
   return (
     <form className="flex h-full flex-col" onSubmit={submitHandler}>
-      {/* Header */}
-      <div className="flex items-center gap-2 border-b border-ink-200 px-4 py-2">
-        <div className="text-sm font-semibold text-ink-700">{schema.name}</div>
-        
-        <div className="ml-auto">
-          <Button type="submit" variant="primary" size="md" disabled={isRunning}>
-            {isRunning ? "Running..." : "Run test"}
-          </Button>
-        </div>
-      </div>
-
-      {/* Form fields */}
+      {/* Form fields - No header, maximized space */}
       <div className="flex-1 overflow-y-auto px-4 py-4">
         <div className="space-y-4">
           {schema.inputs.map((field) => (

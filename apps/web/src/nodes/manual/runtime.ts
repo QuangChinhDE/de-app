@@ -1,4 +1,5 @@
 import type { NodeRuntimeArgs, NodeRuntimeResult } from "../types";
+import { log } from "../../utils/logger";
 
 interface FormField {
   fieldName: string;
@@ -8,6 +9,7 @@ interface FormField {
 
 export async function runManualNode(args: NodeRuntimeArgs): Promise<NodeRuntimeResult> {
   const mode = String(args.resolvedConfig.mode ?? "json");
+  const context = { nodeKey: args.currentNodeKey, nodeType: 'manual', mode };
 
   if (mode === "json") {
     // JSON mode: parse JSON payload
@@ -16,7 +18,17 @@ export async function runManualNode(args: NodeRuntimeArgs): Promise<NodeRuntimeR
 
     try {
       parsed = payloadText.trim() ? JSON.parse(payloadText) : {};
+      
+      // Auto-unwrap single-item array (common pattern for testing)
+      // Example: [{ id: 1, data: {...} }] → { id: 1, data: {...} }
+      if (Array.isArray(parsed) && parsed.length === 1) {
+        log.debug('Auto-unwrapping single-item array', { ...context, beforeUnwrap: parsed });
+        parsed = parsed[0];
+      }
+      
+      log.dataFlow('Manual node output (JSON mode)', { ...context, output: parsed });
     } catch (error) {
+      log.error('Invalid JSON payload', error, context);
       throw new Error(`Invalid JSON payload: ${(error as Error).message}`);
     }
 
@@ -71,6 +83,7 @@ export async function runManualNode(args: NodeRuntimeArgs): Promise<NodeRuntimeR
       }
     });
 
+    log.dataFlow('Manual node output (Form mode)', { ...context, output });
     return { output };
   }
 }

@@ -30,13 +30,47 @@ function extractTokens(value: string): Array<{ token: string; path: string }> {
 
 // Helper: Get preview value for a token path
 function getPreviewValue(path: string, stepOutputs: Record<string, unknown>): unknown {
+  // Path format: "steps.nodeKey.field" or just "nodeKey.field"
   const cleanPath = path.startsWith('steps.') ? path.slice(6) : path;
   const parts = cleanPath.split('.');
-  let current: any = stepOutputs;
   
-  for (const part of parts) {
-    if (current && typeof current === 'object' && part in current) {
-      current = current[part];
+  // First part should be nodeKey
+  if (parts.length === 0) return undefined;
+  
+  const nodeKey = parts[0];
+  const nodeData = stepOutputs[nodeKey];
+  
+  if (!nodeData) return undefined;
+  
+  // If only nodeKey (no field path), return whole node data
+  if (parts.length === 1) return nodeData;
+  
+  // Navigate through nested fields
+  let current: any = nodeData;
+  
+  // Special case: If nodeData is array and we're accessing field, show first item's field
+  // Example: steps.split.id → show array[0].id with indicator
+  if (Array.isArray(nodeData) && parts.length > 1) {
+    if (nodeData.length === 0) return undefined;
+    current = nodeData[0]; // Use first item for preview
+    
+    // Navigate remaining path
+    for (let i = 1; i < parts.length; i++) {
+      if (current && typeof current === 'object' && parts[i] in current) {
+        current = current[parts[i]];
+      } else {
+        return undefined;
+      }
+    }
+    
+    // Return with array indicator
+    return `[0]: ${JSON.stringify(current)}`;
+  }
+  
+  // Normal navigation for non-array data
+  for (let i = 1; i < parts.length; i++) {
+    if (current && typeof current === 'object' && parts[i] in current) {
+      current = current[parts[i]];
     } else {
       return undefined;
     }
@@ -55,7 +89,12 @@ export function TokenizedInput({
 }: TokenizedInputProps): JSX.Element {
   const [{ isOver }, dropRef] = useDrop<DataFieldDragItem, void, { isOver: boolean }>(() => ({
     accept: DATA_FIELD_ITEM_TYPE,
-    drop: (item: DataFieldDragItem) => {
+    drop: (item: DataFieldDragItem, monitor) => {
+      // Only handle drop if this is the actual drop target (not bubbled from nested component)
+      if (monitor.didDrop()) {
+        return;
+      }
+      
       const currentValue = value || "";
       const newValue = currentValue.length > 0 ? `${currentValue} ${item.token}` : item.token;
       onChange(newValue);
@@ -68,6 +107,12 @@ export function TokenizedInput({
   // Parse value into parts: text and tokens
   const parts = useMemo(() => {
     const result: Array<{ type: 'text' | 'token'; content: string; path?: string }> = [];
+    
+    // Guard: if value is undefined/null/empty, return empty array
+    if (!value) {
+      return result;
+    }
+    
     const regex = /{{([^}]+)}}/g;
     let lastIndex = 0;
     let match;

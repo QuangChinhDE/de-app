@@ -68,7 +68,7 @@ export function getLayoutedElements(
   });
 
   // Post-process: Adjust branching node children to be horizontal
-  layoutedNodes = adjustBranchLayout(layoutedNodes, branchingNodes, childrenMap, direction);
+  layoutedNodes = adjustBranchLayout(layoutedNodes, branchingNodes, childrenMap, direction, edges);
 
   return { nodes: layoutedNodes, edges };
 }
@@ -103,7 +103,8 @@ function adjustBranchLayout(
   nodes: Array<Node & { targetPosition: Position; sourcePosition: Position }>,
   branchingNodes: Set<string>,
   childrenMap: Map<string, string[]>,
-  direction: "TB" | "LR"
+  direction: "TB" | "LR",
+  edges?: Edge[]
 ): Array<Node & { targetPosition: Position; sourcePosition: Position }> {
   if (branchingNodes.size === 0) return nodes;
   
@@ -119,9 +120,34 @@ function adjustBranchLayout(
     if (!parent) return;
     
     // Get children node IDs that exist in adjusted nodes
-    const childNodeIds = children.filter((childId) => nodeMap.has(childId));
+    let childNodeIds = children.filter((childId) => nodeMap.has(childId));
     
     if (childNodeIds.length < 2) return;
+    
+    // Sort children by sourceHandle to maintain TRUE/FALSE order
+    if (edges) {
+      childNodeIds = childNodeIds.sort((a, b) => {
+        const edgeA = edges.find(e => e.source === parentId && e.target === a);
+        const edgeB = edges.find(e => e.source === parentId && e.target === b);
+        
+        const handleA = edgeA?.sourceHandle || '';
+        const handleB = edgeB?.sourceHandle || '';
+        
+        // TRUE should come before FALSE
+        if (handleA === 'TRUE' && handleB === 'FALSE') return -1;
+        if (handleA === 'FALSE' && handleB === 'TRUE') return 1;
+        
+        // For SWITCH cases, sort by case number
+        const matchA = handleA.match(/case_(\d+)/);
+        const matchB = handleB.match(/case_(\d+)/);
+        if (matchA && matchB) {
+          return parseInt(matchA[1]) - parseInt(matchB[1]);
+        }
+        
+        // Default: alphabetical
+        return handleA.localeCompare(handleB);
+      });
+    }
     
     // Calculate positions for horizontal arrangement
     if (direction === "TB") {

@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useState, useRef, useEffect } from "react";
 import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
 import classNames from "classnames";
 import { useFlowStore } from "../state/flow-store";
@@ -39,6 +39,7 @@ export const WorkflowNode = memo(({ data, selected }: NodeProps<WorkflowNodeType
   const steps = useFlowStore((state) => state.steps);
   const removeStep = useFlowStore((state) => state.removeStep);
   const runStep = useFlowStore((state) => state.runStep);
+  const renameStep = useFlowStore((state) => state.renameStep);
 
   const nodeData = data as WorkflowNodeData;
   const runState = runStates[nodeData.stepKey];
@@ -48,6 +49,53 @@ export const WorkflowNode = memo(({ data, selected }: NodeProps<WorkflowNodeType
   
   // Get current step config for SWITCH node cases and MERGE input count
   const currentStep = steps.find((s) => s.key === nodeData.stepKey);
+  
+  // Inline edit state
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editNameValue, setEditNameValue] = useState(nodeData.name);
+  const [nameError, setNameError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  
+  // Focus input when editing starts
+  useEffect(() => {
+    if (isEditingName && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [isEditingName]);
+  
+  const handleNameClick = () => {
+    setIsEditingName(true);
+    setEditNameValue(nodeData.name);
+    setNameError(null);
+  };
+  
+  const handleNameSave = () => {
+    const result = renameStep(nodeData.stepKey, editNameValue);
+    
+    if (result.success) {
+      setIsEditingName(false);
+      setNameError(null);
+    } else {
+      setNameError(result.error || "Invalid name");
+    }
+  };
+  
+  const handleNameCancel = () => {
+    setIsEditingName(false);
+    setEditNameValue(nodeData.name);
+    setNameError(null);
+  };
+  
+  const handleNameKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleNameSave();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      handleNameCancel();
+    }
+  };
   const switchCases = nodeData.schemaKey === "switch" && currentStep 
     ? (currentStep.config.cases as unknown[] || [])
     : [];
@@ -127,7 +175,34 @@ export const WorkflowNode = memo(({ data, selected }: NodeProps<WorkflowNodeType
           <p className="text-xs font-medium uppercase tracking-wider text-gray-600">
             {definition?.schema.type ?? "node"}
           </p>
-          <p className="text-sm font-bold text-gray-800 truncate">{nodeData.name}</p>
+          
+          {/* Inline editable name */}
+          {isEditingName ? (
+            <div className="space-y-1">
+              <input
+                ref={inputRef}
+                type="text"
+                value={editNameValue}
+                onChange={(e) => setEditNameValue(e.target.value)}
+                onBlur={handleNameSave}
+                onKeyDown={handleNameKeyDown}
+                placeholder="Enter node name"
+                className="w-full text-sm font-bold text-gray-800 border-2 border-indigo-400 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                onClick={(e) => e.stopPropagation()}
+              />
+              {nameError && (
+                <p className="text-[10px] text-red-600 font-semibold">{nameError}</p>
+              )}
+            </div>
+          ) : (
+            <p 
+              className="text-sm font-bold text-gray-800 truncate cursor-pointer hover:text-indigo-600 transition-colors"
+              onClick={handleNameClick}
+              title="Click to rename"
+            >
+              {nodeData.name}
+            </p>
+          )}
         </div>
         <button
           type="button"

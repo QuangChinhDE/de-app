@@ -1,4 +1,4 @@
-import type { NodeRuntimeArgs, NodeRuntimeResult } from "../types";
+﻿import type { NodeRuntimeArgs, NodeRuntimeResult } from "../types";
 import { extractFieldPath, getFieldValue, smartUnwrap } from "../utils";
 
 interface FilterCondition {
@@ -13,22 +13,13 @@ interface FilterCondition {
  * Same logic as FILTER node but outputs both pass and fail items
  */
 export async function runIfNode(args: NodeRuntimeArgs): Promise<NodeRuntimeResult> {
-  console.log("[IF Runtime] Starting execution");
-  
-  // Get conditions array (same as FILTER)
-  const conditions = (args.resolvedConfig.conditions as FilterCondition[]) ?? [];
-  const logic = String(args.resolvedConfig.logic ?? "AND");
-  
-  console.log("[IF Runtime] Conditions:", conditions);
-  console.log("[IF Runtime] Logic:", logic);
-  
   // Get previous data and smart unwrap
   let previousData: unknown = args.resolvedConfig.__previousOutput || {};
   previousData = smartUnwrap(previousData, args.previousNodeType);
-  console.log("[IF Runtime] Previous data (after unwrap):", previousData);
 
   // Use raw config conditions to preserve tokens
   const rawConditions = (args.config.conditions as FilterCondition[]) ?? [];
+  const logic = String(args.config.logic ?? "AND");
 
   if (!Array.isArray(rawConditions) || rawConditions.length === 0) {
     throw new Error("IF node requires at least one condition");
@@ -39,34 +30,33 @@ export async function runIfNode(args: NodeRuntimeArgs): Promise<NodeRuntimeResul
   
   if (Array.isArray(previousData)) {
     arrayToFilter = previousData;
-    console.log("[IF Runtime] Using previous data as array, length:", arrayToFilter.length);
   } else if (previousData && typeof previousData === "object") {
-    // Search for first array field
     const values = Object.values(previousData);
     const firstArray = values.find((v) => Array.isArray(v));
     if (firstArray) {
       arrayToFilter = firstArray as unknown[];
-      console.log("[IF Runtime] Found array field, length:", arrayToFilter.length);
     }
   }
 
   if (arrayToFilter.length === 0) {
-    console.warn("[IF Runtime] No data to filter");
     return {
-      output: {
-        TRUE: [],
-        FALSE: [],
-      },
+      outputs: [
+        { label: 'TRUE', data: [] },
+        { label: 'FALSE', data: [] }
+      ]
     };
   }
 
   // Filter array based on conditions
-  const result = filterArray(arrayToFilter, rawConditions, logic);
+  const { trueItems, falseItems } = filterArray(arrayToFilter, rawConditions, logic);
 
-  console.log("[IF Runtime] TRUE count:", (result.TRUE as any[]).length);
-  console.log("[IF Runtime] FALSE count:", (result.FALSE as any[]).length);
-
-  return { output: result };
+  // Return multiple outputs with labels (n8n/Zapier standard)
+  return {
+    outputs: [
+      { label: 'TRUE', data: trueItems },
+      { label: 'FALSE', data: falseItems }
+    ]
+  };
 }
 
 // Copy of FILTER logic but adapted for IF output format
@@ -74,7 +64,7 @@ function filterArray(
   data: unknown[],
   conditions: FilterCondition[],
   logic: string
-): Record<string, unknown> {
+): { trueItems: unknown[]; falseItems: unknown[] } {
 
   // Helper to detect actual type of value
   const detectValueType = (value: unknown): string => {
@@ -225,9 +215,10 @@ function filterArray(
     }
   });
 
+  // Return simple object with trueItems and falseItems
   return {
-    TRUE: trueItems,
-    FALSE: falseItems,
+    trueItems,
+    falseItems
   };
 }
 

@@ -1,5 +1,6 @@
 import type { NodeRuntimeArgs, NodeRuntimeResult } from "../types";
 import { smartUnwrap } from "../utils";
+import { log } from "../../utils/logger";
 
 /**
  * MERGE Node Runtime
@@ -10,13 +11,13 @@ import { smartUnwrap } from "../utils";
  * - join: SQL-like join on key field
  */
 export async function runMergeNode(args: NodeRuntimeArgs): Promise<NodeRuntimeResult> {
-  const { resolvedConfig, inputsByHandle } = args;
+  const { resolvedConfig, inputsByHandle, currentNodeKey } = args;
   
   const mode = resolvedConfig.mode as string || "append";
   const inputCount = resolvedConfig.inputCount as number || 2;
   const removeDuplicates = resolvedConfig.removeDuplicates as boolean || false;
   
-
+  const context = { nodeKey: currentNodeKey, nodeType: 'merge', mode };
   
   // Collect data from each input handle
   const inputs: unknown[] = [];
@@ -30,7 +31,7 @@ export async function runMergeNode(args: NodeRuntimeArgs): Promise<NodeRuntimeRe
       inputs.push(unwrapped);
 
     } else {
-      console.warn(`[MERGE] Input ${i + 1} (${handleId}): not connected`);
+      log.warn(`Input ${i + 1} not connected`, { ...context, handleId });
     }
   }
   
@@ -54,7 +55,7 @@ export async function runMergeNode(args: NodeRuntimeArgs): Promise<NodeRuntimeRe
       const joinKey2 = resolvedConfig.joinKey2 as string || "id";
       const joinType = resolvedConfig.joinType as string || "inner";
       const flattenJoined = resolvedConfig.flattenJoined as boolean ?? true;
-      return handleJoinMode(inputs, joinKey1, joinKey2, joinType, flattenJoined);
+      return joinArrays(inputs, joinKey1, joinKey2, joinType, flattenJoined, currentNodeKey);
     default:
       throw new Error(`Unknown merge mode: ${mode}`);
   }
@@ -152,17 +153,19 @@ function handleMergeMode(inputs: unknown[], strategy: string) {
 /**
  * JOIN Mode: SQL-like join on key field
  */
-function handleJoinMode(
+function joinArrays(
   inputs: unknown[],
   joinKey1: string,
   joinKey2: string,
   joinType: string,
-  flattenJoined: boolean
+  flattenJoined: boolean,
+  nodeKey?: string
 ) {
   if (inputs.length < 2) {
     throw new Error(`JOIN mode requires exactly 2 inputs. Connected: ${inputs.length}`);
   }
   
+  const context = { nodeKey, nodeType: 'merge', operation: 'join' };
   const [input1, input2] = inputs.slice(0, 2); // Use only first 2 inputs for join
   
   if (!Array.isArray(input1) || !Array.isArray(input2)) {
@@ -193,7 +196,7 @@ function handleJoinMode(
   // Process left side
   for (const leftItem of input1) {
     if (typeof leftItem !== "object" || leftItem === null || Array.isArray(leftItem)) {
-      console.warn(`[MERGE:JOIN] Skipping non-object item in Input 1`);
+      log.warn('Skipping non-object item in JOIN operation', { ...context, input: 1 });
       continue;
     }
     

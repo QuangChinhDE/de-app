@@ -1,17 +1,19 @@
 import { useState, useMemo, useEffect } from "react";
 import { useDrag, type DragSourceMonitor } from "react-dnd";
+import { getAvailableBranches } from "../utils/run-data";
 
 const ITEM_TYPE = "DATA_FIELD";
 
 interface DataFieldsPanelProps {
   outputs: Record<string, unknown>;
-  selectedStepKey?: string;
+  selectedStepKey?: string; // Canvas selected node (for branch lock logic)
+  resultNodeKey?: string | null; // Result panel selected node (for display)
   connectedBranches?: Record<string, string>; // stepKey -> branchName mapping
 }
 
 type ViewMode = "schema" | "table";
 
-export function DataFieldsPanel({ outputs, selectedStepKey, connectedBranches }: DataFieldsPanelProps): JSX.Element {
+export function DataFieldsPanel({ outputs, selectedStepKey, resultNodeKey, connectedBranches }: DataFieldsPanelProps): JSX.Element {
   const nodeKeys = Object.keys(outputs);
   const [selectedNode, setSelectedNode] = useState<string>("");
   const [viewMode, setViewMode] = useState<ViewMode>("schema");
@@ -38,28 +40,19 @@ export function DataFieldsPanel({ outputs, selectedStepKey, connectedBranches }:
   const rawData = selectedNode ? outputs[selectedNode] : undefined;
   
   // Check if this node has connected branch restriction
-  const connectedBranch = connectedBranches?.[selectedNode];
-  console.log(`[DATAFIELDSPANEL] 🔍 Branch detection:`, { 
-    selectedNode, 
-    connectedBranches, 
-    connectedBranch,
-    hasRawData: !!rawData
-  });
+  // IMPORTANT: Only apply branch restriction when viewing this node as UPSTREAM of another node
+  // Compare resultNodeKey (node being viewed in Result panel) with selectedStepKey (canvas selected node)
+  // If they match, we're viewing the node itself → allow free branch selection
+  // If they don't match, we're viewing as upstream → apply branch lock
+  const isViewingSelfNode = resultNodeKey === selectedStepKey;
+  
+  // connectedBranches is keyed by SOURCE node (upstream), but selectedNode is the RESULT node we're viewing
+  // When viewing upstream node of selectedStepKey, we need to look up by selectedNode (which is the upstream)
+  // connectedBranches[selectedNode] gives us the branch connection FROM selectedNode TO selectedStepKey
+  const connectedBranch = !isViewingSelfNode ? connectedBranches?.[selectedNode] : undefined;
   
   // Detect if this is branching node output (IF/SWITCH)
-  const branches: string[] = [];
-  if (rawData && isObject(rawData) && !Array.isArray(rawData) && !connectedBranch) {
-    // Only show branch selector if NOT restricted to specific branch
-    const keys = Object.keys(rawData);
-    // IF node: TRUE/FALSE
-    if (keys.includes('TRUE') || keys.includes('FALSE')) {
-      branches.push(...keys.filter(k => k === 'TRUE' || k === 'FALSE').sort().reverse()); // TRUE first
-    }
-    // SWITCH node: case_0, case_1, default, etc
-    else if (keys.some(k => k.startsWith('case_') || k === 'default')) {
-      branches.push(...keys.sort());
-    }
-  }
+  const { branches, isBranching } = getAvailableBranches(rawData);
 
   // Auto-select first branch or connected branch
   useEffect(() => {
@@ -72,12 +65,27 @@ export function DataFieldsPanel({ outputs, selectedStepKey, connectedBranches }:
 
   // Get data to display (branch data or original data)
   let selectedData: unknown;
-  if (connectedBranch && rawData && isObject(rawData) && !Array.isArray(rawData)) {
+  if (connectedBranch && connectedBranch === 'MIXED') {
+    // Show full branching data for MIXED case (all branches merged)
+    selectedData = rawData;
+  } else if (connectedBranch && rawData && isObject(rawData) && !Array.isArray(rawData)) {
     // Show only connected branch data
-    selectedData = (rawData as Record<string, unknown>)[connectedBranch];
+    const branchData = (rawData as Record<string, unknown>)[connectedBranch];
+    if (branchData !== undefined) {
+      selectedData = branchData;
+    } else {
+      // Fallback: connected branch not found in data, show full data
+      selectedData = rawData;
+    }
   } else if (branches.length > 0 && selectedBranch) {
     // Show selected branch data (with dropdown)
-    selectedData = (rawData as Record<string, unknown>)[selectedBranch];
+    const branchData = (rawData as Record<string, unknown>)[selectedBranch];
+    if (branchData !== undefined) {
+      selectedData = branchData;
+    } else {
+      // Fallback: selected branch not found, show full data
+      selectedData = rawData;
+    }
   } else {
     // Show original data
     selectedData = rawData;
@@ -102,7 +110,20 @@ export function DataFieldsPanel({ outputs, selectedStepKey, connectedBranches }:
       {Object.entries(outputs).length > 0 && (
         <>
           {/* Branch Status/Selector for IF/SWITCH nodes */}
-          {connectedBranch && (
+          {connectedBranch && connectedBranch === 'MIXED' && (
+            <div className="border-b-2 border-orange-200 bg-orange-50 px-4 py-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-orange-900">
+                  ⚠️ Multiple branches:
+                </span>
+                <span className="rounded-lg bg-orange-200 px-3 py-1 text-sm font-bold text-orange-800">
+                  This node receives data from multiple branches (TRUE + FALSE)
+                </span>
+              </div>
+            </div>
+          )}
+          
+          {connectedBranch && connectedBranch !== 'MIXED' && (
             <div className="border-b-2 border-green-200 bg-green-50 px-4 py-3">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-bold text-green-900">
@@ -173,7 +194,11 @@ export function DataFieldsPanel({ outputs, selectedStepKey, connectedBranches }:
           {/* Content */}
           <div className="flex-1 overflow-y-auto px-4 py-4">
             {viewMode === "schema" && (
-              <SchemaView data={selectedData} stepKey={selectedNode} />
+              <SchemaView 
+                data={selectedData} 
+                stepKey={selectedNode} 
+                connectedBranch={connectedBranch}
+              />
             )}
             {viewMode === "table" && (
               <TableView
@@ -194,9 +219,10 @@ export function DataFieldsPanel({ outputs, selectedStepKey, connectedBranches }:
 interface SchemaViewProps {
   data: unknown;
   stepKey: string;
+  connectedBranch?: string;
 }
 
-function SchemaView({ data, stepKey }: SchemaViewProps): JSX.Element {
+function SchemaView({ data, stepKey, connectedBranch }: SchemaViewProps): JSX.Element {
   const schemaData = useMemo(() => {
     if (!data) return null;
     return extractSchema(data);
@@ -234,12 +260,21 @@ function SchemaView({ data, stepKey }: SchemaViewProps): JSX.Element {
                 path={[key]} 
                 depth={0}
                 autoExpandAll={true}
+                connectedBranch={connectedBranch}
               />
             </li>
           ))}
         </ul>
       ) : (
-        <DataFieldBranch label={stepKey} value={schemaData} stepKey={stepKey} path={[]} depth={0} autoExpandAll={true} />
+        <DataFieldBranch 
+          label={stepKey} 
+          value={schemaData} 
+          stepKey={stepKey} 
+          path={[]} 
+          depth={0} 
+          autoExpandAll={true}
+          connectedBranch={connectedBranch}
+        />
       )}
     </div>
   );
@@ -254,6 +289,8 @@ interface TableViewProps {
 }
 
 function TableView({ data, currentPage, itemsPerPage, onPageChange }: TableViewProps): JSX.Element {
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  
   // Branch selection is now handled by parent component
   // Data here is already the selected branch data
   
@@ -300,40 +337,90 @@ function TableView({ data, currentPage, itemsPerPage, onPageChange }: TableViewP
   const endIndex = Math.min(startIndex + itemsPerPage, arrayData.length);
   const pageData = arrayData.slice(startIndex, endIndex);
 
-  return (
-    <div>
-      <div className="mb-3 rounded-lg border-2 border-indigo-300 bg-gradient-to-r from-indigo-50 to-purple-50 p-3 text-xs text-indigo-900">
-        <strong className="text-sm">📊 TABLE Mode</strong>
-        <p className="mt-1">
+  // Render table content (reusable for both normal and fullscreen)
+  const renderTableContent = () => (
+    <>
+      {/* Info bar with fullscreen button */}
+      <div className="mb-3 flex items-center justify-between">
+        <div className="text-xs text-indigo-700">
           Showing {startIndex + 1}-{endIndex} of {arrayData.length} rows
-        </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setIsFullscreen(true)}
+          className="rounded-lg bg-indigo-500 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-600 transition-colors shadow-sm whitespace-nowrap"
+          title="Open in fullscreen"
+        >
+          🔍 Fullscreen
+        </button>
       </div>
 
-      <div className="overflow-x-auto rounded-lg border-2 border-blue-200 bg-white shadow-md">
-        <table className="w-full text-xs">
-          <thead className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white">
+      {/* Table - with sticky header, zebra stripes, expandable objects */}
+      <div className={`overflow-auto rounded-lg border-2 border-blue-200 ${isFullscreen ? 'max-h-[calc(100vh-200px)]' : 'max-h-[600px]'}`}>
+        <table className="w-full text-xs border-collapse">
+          <thead className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white sticky top-0 z-10 shadow-sm">
             <tr>
-              <th className="px-3 py-2 text-left font-bold border-r border-blue-400">#</th>
+              <th className="border-b-2 border-blue-400 px-4 py-3 text-left font-bold whitespace-nowrap">#</th>
               {columns.map((col) => (
-                <th key={col} className="px-3 py-2 text-left font-bold border-r border-blue-400 last:border-r-0">
+                <th 
+                  key={col} 
+                  className="border-b-2 border-blue-400 px-4 py-3 text-left font-bold whitespace-nowrap"
+                  title={col}
+                >
                   {col}
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody>
+          <tbody className="bg-white">
             {pageData.map((item, idx) => {
               const globalIdx = startIndex + idx;
               return (
-                <tr key={globalIdx} className="border-b border-blue-100 hover:bg-blue-50 transition-colors">
-                  <td className="px-3 py-2 font-mono text-gray-500 border-r border-blue-100">
-                    {globalIdx}
+                <tr 
+                  key={globalIdx} 
+                  className={`
+                    transition-colors hover:bg-blue-50 
+                    ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
+                  `}
+                >
+                  <td className="border-b border-blue-100 px-4 py-3 font-medium text-gray-600 whitespace-nowrap">
+                    {globalIdx + 1}
                   </td>
                   {columns.map((col) => {
                     const value = isObject(item) ? (item as Record<string, unknown>)[col] : undefined;
+                    const isComplexType = typeof value === 'object' && value !== null;
+                    const stringValue = isComplexType ? JSON.stringify(value, null, 2) : String(value ?? '');
+                    const isTruncated = stringValue.length > 100;
+                    
                     return (
-                      <td key={col} className="px-3 py-2 border-r border-blue-100 last:border-r-0">
-                        {formatTableValue(value)}
+                      <td 
+                        key={col} 
+                        className="border-b border-blue-100 px-4 py-3 max-w-xs"
+                        title={isTruncated ? stringValue : undefined}
+                      >
+                        {isComplexType ? (
+                          <details className="cursor-pointer group">
+                            <summary className="inline-flex items-center gap-1 text-indigo-600 font-medium hover:text-indigo-800 select-none">
+                              <span className="group-open:rotate-90 transition-transform inline-block">▶</span>
+                              <span className="text-[10px] font-mono">
+                                {Array.isArray(value) ? `Array[${value.length}]` : 'Object'}
+                              </span>
+                            </summary>
+                            <pre className="mt-2 p-2 bg-gray-100 rounded text-[10px] overflow-auto max-h-40 border border-gray-300">
+                              {stringValue}
+                            </pre>
+                          </details>
+                        ) : (
+                          <span 
+                            className={`
+                              ${isTruncated ? 'line-clamp-2' : ''} 
+                              ${typeof value === 'number' ? 'font-mono text-blue-600' : ''}
+                              ${typeof value === 'boolean' ? 'font-mono text-purple-600' : ''}
+                            `}
+                          >
+                            {stringValue}
+                          </span>
+                        )}
                       </td>
                     );
                   })}
@@ -346,29 +433,61 @@ function TableView({ data, currentPage, itemsPerPage, onPageChange }: TableViewP
 
       {/* Pagination Controls */}
       {totalPages > 1 && (
-        <div className="mt-4 flex items-center justify-between rounded-lg border-2 border-blue-200 bg-white px-4 py-3 shadow-sm">
+        <div className="mt-4 flex items-center justify-center gap-2">
           <button
             type="button"
             onClick={() => onPageChange(Math.max(1, currentPage - 1))}
             disabled={currentPage === 1}
-            className="rounded-lg bg-blue-500 px-4 py-2 text-xs font-bold text-white hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+            className="rounded-lg bg-blue-500 px-3 py-1 text-xs font-bold text-white disabled:bg-gray-300"
           >
             ← Prev
           </button>
-          <span className="text-sm font-semibold text-blue-900">
-            Page {currentPage} / {totalPages}
+          <span className="text-xs text-blue-700">
+            Page {currentPage} of {totalPages}
           </span>
           <button
             type="button"
             onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
             disabled={currentPage === totalPages}
-            className="rounded-lg bg-blue-500 px-4 py-2 text-xs font-bold text-white hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+            className="rounded-lg bg-blue-500 px-3 py-1 text-xs font-bold text-white disabled:bg-gray-300"
           >
             Next →
           </button>
         </div>
       )}
-    </div>
+    </>
+  );
+
+  return (
+    <>
+      <div>
+        {renderTableContent()}
+      </div>
+
+      {/* Fullscreen Modal */}
+      {isFullscreen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
+          <div className="w-full h-full max-w-7xl bg-white rounded-lg shadow-2xl flex flex-col">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b-2 border-blue-300 bg-gradient-to-r from-blue-50 to-indigo-50">
+              <h2 className="text-lg font-bold text-blue-900">📊 Table View - Fullscreen</h2>
+              <button
+                type="button"
+                onClick={() => setIsFullscreen(false)}
+                className="rounded-lg bg-red-500 px-4 py-2 text-sm font-bold text-white hover:bg-red-600 transition-colors"
+              >
+                ✕ Close
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-hidden p-6 space-y-3">
+              {renderTableContent()}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -433,9 +552,10 @@ interface DataFieldBranchProps {
   path: string[];
   depth: number;
   autoExpandAll?: boolean; // For SCHEMA mode: expand all nested objects
+  connectedBranch?: string; // Branch connection (e.g., 'TRUE', 'FALSE')
 }
 
-function DataFieldBranch({ label, value, stepKey, path, depth, autoExpandAll = false }: DataFieldBranchProps): JSX.Element {
+function DataFieldBranch({ label, value, stepKey, path, depth, autoExpandAll = false, connectedBranch }: DataFieldBranchProps): JSX.Element {
   // In SCHEMA mode (autoExpandAll=true), expand all levels up to depth 3
   // In TABLE mode, only expand depth < 1
   const [open, setOpen] = useState(autoExpandAll ? depth < 3 : depth < 1);
@@ -443,7 +563,10 @@ function DataFieldBranch({ label, value, stepKey, path, depth, autoExpandAll = f
   const currentPath = path;
   const isLeaf = !isObject(value) && !Array.isArray(value);
   const tokenPath = currentPath.length ? `${currentPath.join(".")}` : "";
-  const token = tokenPath ? `{{steps.${stepKey}.${tokenPath}}}` : `{{steps.${stepKey}}}`;
+  
+  // Generate token with branch suffix if connected from specific branch
+  const effectiveStepKey = connectedBranch ? `${stepKey}-${connectedBranch}` : stepKey;
+  const token = tokenPath ? `{{steps.${effectiveStepKey}.${tokenPath}}}` : `{{steps.${effectiveStepKey}}}`;
 
   const [{ isDragging }, dragRef] = useDrag<DataFieldDragItem, void, { isDragging: boolean }>(
     () => ({
@@ -542,6 +665,7 @@ function DataFieldBranch({ label, value, stepKey, path, depth, autoExpandAll = f
                     path={[...currentPath, `${index}`]}
                     depth={depth + 1}
                     autoExpandAll={autoExpandAll}
+                    connectedBranch={connectedBranch}
                   />
                 </li>
               ))}
@@ -557,6 +681,7 @@ function DataFieldBranch({ label, value, stepKey, path, depth, autoExpandAll = f
                     path={[...currentPath, key]}
                     depth={depth + 1}
                     autoExpandAll={autoExpandAll}
+                    connectedBranch={connectedBranch}
                   />
                 </li>
               ))}

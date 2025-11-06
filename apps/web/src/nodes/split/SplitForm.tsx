@@ -32,7 +32,13 @@ export function SplitForm({ schema, value, onChange, onRun, isRunning, stepOutpu
 
   const handleModeChange = (newMode: "auto" | "field") => {
     setValue("mode", newMode, { shouldValidate: true });
-    onChange({ ...value, mode: newMode });
+    // Ensure fieldPath is always defined (empty string if undefined)
+    const updatedValue = { 
+      ...value, 
+      mode: newMode,
+      fieldPath: value.fieldPath ?? ""
+    };
+    onChange(updatedValue);
   };
 
   const handleFieldPathChange = (newPath: string) => {
@@ -124,18 +130,6 @@ export function SplitForm({ schema, value, onChange, onRun, isRunning, stepOutpu
             <li>• Connect to Loop node to iterate</li>
           </ul>
         </div>
-      </div>
-
-      {/* Footer */}
-      <div className="border-t border-ink-200 px-4 py-3">
-        <Button
-          type="submit"
-          variant="primary"
-          fullWidth
-          disabled={isRunning}
-        >
-          {isRunning ? "Running..." : "▶ Run Step"}
-        </Button>
       </div>
     </form>
   );

@@ -80,7 +80,6 @@ export async function runSetNode(args: NodeRuntimeArgs): Promise<NodeRuntimeResu
   // If previous data is array, process each item with its own context
   if (Array.isArray(previousData)) {
     const transformed = previousData.map((item, index) => {
-
       return setFieldsOnItem(item, rawFields, includeOtherFields, stepOutputs);
     });
 
@@ -114,7 +113,6 @@ function setFieldsOnItem(
   // Set each field with type conversion
   fields.forEach((field) => {
     if (!field.key) {
-      console.warn("[SET] Skipping field with no key:", field);
       return;
     }
 

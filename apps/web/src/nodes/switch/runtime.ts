@@ -37,19 +37,21 @@ function runSingleMode(
   const matchedIndex = caseStrings.findIndex((c) => c === valueStr);
   const matchedCase = matchedIndex >= 0 ? caseStrings[matchedIndex] : null;
 
-  // Build output object with all cases as null, then set the matched one
-  const output: Record<string, unknown> = {};
+  // Build multiple outputs - one for each case + default
+  const outputs: Array<{ label: string; data: unknown }> = [];
 
   // Add all case outputs
   caseStrings.forEach((caseValue, index) => {
     const caseKey = `case_${index}`;
-    output[caseKey] = caseValue === matchedCase ? { value: valueStr, matchedCase: caseValue } : null;
+    const data = caseValue === matchedCase ? { value: valueStr, matchedCase: caseValue } : null;
+    outputs.push({ label: caseKey, data });
   });
 
   // Add default output
-  output.default = matchedCase === null ? { value: valueStr, matchedCase: defaultCase } : null;
+  const defaultData = matchedCase === null ? { value: valueStr, matchedCase: defaultCase } : null;
+  outputs.push({ label: 'default', data: defaultData });
 
-  return { output };
+  return { outputs };
 }
 
 function runFilterMode(
@@ -69,15 +71,16 @@ function runFilterMode(
   // Extract field path from token using shared utility
   const fieldPath = extractFieldPath(filterPathToken);
 
-  // Build output object with arrays for each case
-  const output: Record<string, unknown> = {};
+  // Build multiple outputs - one for each case + default
+  const outputs: Array<{ label: string; data: unknown }> = [];
 
   // Initialize all case outputs as empty arrays
+  const caseArrays: Record<string, unknown[]> = {};
   caseStrings.forEach((caseValue, index) => {
     const caseKey = `case_${index}`;
-    output[caseKey] = [];
+    caseArrays[caseKey] = [];
   });
-  output.default = [];
+  caseArrays.default = [];
 
   // Filter array items into corresponding cases
   value.forEach((item) => {
@@ -87,12 +90,19 @@ function runFilterMode(
 
       if (matchedIndex >= 0) {
         const caseKey = `case_${matchedIndex}`;
-        (output[caseKey] as unknown[]).push(item);
+        caseArrays[caseKey].push(item);
       } else {
-        (output.default as unknown[]).push(item);
+        caseArrays.default.push(item);
       }
     }
   });
 
-  return { output };
+  // Convert to outputs array
+  caseStrings.forEach((caseValue, index) => {
+    const caseKey = `case_${index}`;
+    outputs.push({ label: caseKey, data: caseArrays[caseKey] });
+  });
+  outputs.push({ label: 'default', data: caseArrays.default });
+
+  return { outputs };
 }

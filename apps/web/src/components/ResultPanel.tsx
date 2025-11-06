@@ -2,6 +2,7 @@ import { useMemo, useState, useEffect } from "react";
 import { DataFieldsPanel } from "./DataFieldsPanel";
 import { useFlowStore } from "../state/flow-store";
 import type { RunRecord, SampleCatalogEntry } from "@node-playground/types";
+import { getBranchConnection } from "../utils/run-data";
 
 const TAB_ORDER: Array<"logs" | "data"> = [
   "data",
@@ -14,28 +15,61 @@ export function ResultPanel(): JSX.Element {
   const selectedStepKey = useFlowStore((state) => state.selectedStepKey);
   const runTimeline = useFlowStore((state) => state.runTimeline);
   const stepOutputs = useFlowStore((state) => state.stepOutputs);
+  const stepRunStates = useFlowStore((state) => state.stepRunStates);
   const samples = useFlowStore((state) => state.samples);
   const markSample = useFlowStore((state) => state.markSample);
   const clearLogs = useFlowStore((state) => state.clearLogs);
   const steps = useFlowStore((state) => state.steps);
   const customEdges = useFlowStore((state) => state.customEdges);
 
-  // Auto-select previous node when selectedStepKey changes
+  // Auto-select nearest branching ancestor when selectedStepKey changes
   useEffect(() => {
     if (!selectedStepKey) {
       setResultNodeKey(null);
       return;
     }
 
-    const selectedIndex = steps.findIndex((s) => s.key === selectedStepKey);
-    if (selectedIndex > 0) {
-      // Select the node right before current node
-      const previousNode = steps[selectedIndex - 1];
-      setResultNodeKey(previousNode.key);
+    // Find nearest branching ancestor (IF/SWITCH node)
+    const findBranchingAncestor = (nodeKey: string, visited = new Set<string>()): string | null => {
+      if (visited.has(nodeKey)) return null; // Prevent infinite loop
+      visited.add(nodeKey);
+
+      // Find incoming edges to this node
+      const incomingEdges = customEdges.filter((e) => e.target === nodeKey);
+      if (incomingEdges.length === 0) return null;
+
+      // Get source node of the first incoming edge
+      const sourceKey = incomingEdges[0].source;
+      const sourceNode = steps.find((s) => s.key === sourceKey);
+      if (!sourceNode) return null;
+
+      // Check if source is a branching node (IF/SWITCH)
+      const isBranching = sourceNode.schemaKey === "if" || sourceNode.schemaKey === "switch";
+      
+      if (isBranching) {
+        return sourceKey; // Found branching ancestor
+      } else {
+        // Continue tracing upward
+        return findBranchingAncestor(sourceKey, visited);
+      }
+    };
+
+    const branchingAncestor = findBranchingAncestor(selectedStepKey);
+    
+    if (branchingAncestor) {
+      setResultNodeKey(branchingAncestor);
     } else {
-      setResultNodeKey(null);
+      // No branching ancestor found - fall back to immediate previous node
+      const selectedIndex = steps.findIndex((s) => s.key === selectedStepKey);
+      if (selectedIndex > 0) {
+        const previousNode = steps[selectedIndex - 1];
+        setResultNodeKey(previousNode.key);
+      } else {
+        // First node or no previous node - show the selected node itself
+        setResultNodeKey(selectedStepKey);
+      }
     }
-  }, [selectedStepKey, steps]);
+  }, [selectedStepKey, steps, customEdges]);
 
   const logs = useMemo(
     () =>
@@ -47,21 +81,60 @@ export function ResultPanel(): JSX.Element {
     [runTimeline, selectedStepKey]
   );
 
-  // Filter outputs: Only show nodes BEFORE the selected node
+  // Show output of the selected result node (or all nodes if none selected)
   const combinedOutputs = useMemo(() => {
     const outputs: Record<string, unknown> = {};
     
-    // Find index of selected step
-    const selectedIndex = selectedStepKey 
-      ? steps.findIndex((s) => s.key === selectedStepKey)
-      : -1;
-    
-    // Only include outputs from steps BEFORE selected step
-    if (selectedIndex > 0) {
-      for (let i = 0; i < selectedIndex; i++) {
-        const stepKey = steps[i].key;
-        if (stepOutputs[stepKey] !== undefined) {
-          outputs[stepKey] = stepOutputs[stepKey];
+    if (resultNodeKey) {
+      // Check if this is a branching node (IF/SWITCH)
+      const resultStep = steps.find(s => s.key === resultNodeKey);
+      const isBranchingNode = resultStep && (resultStep.schemaKey === 'if' || resultStep.schemaKey === 'switch');
+      
+      if (isBranchingNode) {
+        // For branching nodes: collect all branch outputs (if-TRUE, if-FALSE)
+        const branchOutputs: Record<string, unknown> = {};
+        Object.keys(stepOutputs).forEach(key => {
+          if (key.startsWith(`${resultNodeKey}-`)) {
+            const branchName = key.substring(resultNodeKey.length + 1); // Extract "TRUE", "FALSE", etc.
+            branchOutputs[branchName] = stepOutputs[key];
+          }
+        });
+        
+        if (Object.keys(branchOutputs).length > 0) {
+          // Show as object with branch keys (like original IF output format)
+          outputs[resultNodeKey] = branchOutputs;
+        }
+      } else if (stepOutputs[resultNodeKey] !== undefined) {
+        // Normal node: show direct output (previous node data)
+        outputs[resultNodeKey] = stepOutputs[resultNodeKey];
+      }
+    } else {
+      // No result node selected - show all outputs from nodes before selected canvas node
+      const selectedIndex = selectedStepKey 
+        ? steps.findIndex((s) => s.key === selectedStepKey)
+        : -1;
+      
+      if (selectedIndex > 0) {
+        for (let i = 0; i < selectedIndex; i++) {
+          const stepKey = steps[i].key;
+          const step = steps[i];
+          const isBranchingNode = step.schemaKey === 'if' || step.schemaKey === 'switch';
+          
+          if (isBranchingNode) {
+            // Collect branch outputs
+            const branchOutputs: Record<string, unknown> = {};
+            Object.keys(stepOutputs).forEach(key => {
+              if (key.startsWith(`${stepKey}-`)) {
+                const branchName = key.substring(stepKey.length + 1);
+                branchOutputs[branchName] = stepOutputs[key];
+              }
+            });
+            if (Object.keys(branchOutputs).length > 0) {
+              outputs[stepKey] = branchOutputs;
+            }
+          } else if (stepOutputs[stepKey] !== undefined) {
+            outputs[stepKey] = stepOutputs[stepKey];
+          }
         }
       }
     }
@@ -72,39 +145,111 @@ export function ResultPanel(): JSX.Element {
     });
     
     return outputs;
-  }, [stepOutputs, samples, selectedStepKey, steps]);
+  }, [stepOutputs, samples, selectedStepKey, steps, resultNodeKey]);
 
-  // Calculate connected branches for each step (for branch filtering)
+  // Calculate connected branches for each step
   const connectedBranches = useMemo(() => {
     if (!selectedStepKey) return {};
     
     const branches: Record<string, string> = {};
     
-    // Find all edges going TO the selected step
-    const incomingEdges = customEdges.filter(edge => edge.target === selectedStepKey);
-    console.log(`[RESULTPANEL] 🔍 Connected branches for ${selectedStepKey}:`, { incomingEdges });
+    // Find edges connecting to selected step
+    const incomingEdges = customEdges.filter(e => e.target === selectedStepKey);
     
-    // For each incoming edge, if it has sourceHandle, map the source step to that branch
-    for (const edge of incomingEdges) {
+    // PRIORITY 1: Use edge.sourceHandle directly (most reliable)
+    // This works both before and after running nodes
+    incomingEdges.forEach(edge => {
       if (edge.sourceHandle) {
-        branches[edge.source] = edge.sourceHandle;
-        console.log(`[RESULTPANEL] ✅ Branch mapping: ${edge.source} → ${edge.sourceHandle}`);
-      } else {
-        console.log(`[RESULTPANEL] ❌ No sourceHandle for edge: ${edge.source} → ${edge.target}`);
+        const sourceStep = steps.find(s => s.key === edge.source);
+        if (sourceStep && (sourceStep.schemaKey === 'if' || sourceStep.schemaKey === 'switch')) {
+          // Normalize handle: IF node uses "TRUE"/"FALSE", Switch uses case names
+          const normalizedHandle = sourceStep.schemaKey === 'if' 
+            ? edge.sourceHandle.toUpperCase() 
+            : edge.sourceHandle;
+          branches[edge.source] = normalizedHandle;
+        }
+      }
+    });
+    
+    // If we found branches from edges, return immediately
+    if (Object.keys(branches).length > 0) {
+      return branches;
+    }
+    
+    // FALLBACK: Use item lineage tracing (only when no sourceHandle available)
+    const selectedRunState = stepRunStates[selectedStepKey];
+    const targetRunRecord = selectedRunState?.lastRun;
+    
+    if (!targetRunRecord) {
+      return branches;
+    }
+    
+    const sourceNodes = new Set<string>();
+    
+    if (targetRunRecord?.source) {
+      targetRunRecord.source.forEach(s => sourceNodes.add(s.previousNode));
+    }
+    
+    incomingEdges.forEach(e => sourceNodes.add(e.source));
+    
+    for (const sourceKey of sourceNodes) {
+      const sourceRunState = stepRunStates[sourceKey];
+      const sourceRunRecord = sourceRunState?.lastRun;
+      
+      const connection = getBranchConnection(
+        sourceKey,
+        selectedStepKey,
+        targetRunRecord,
+        sourceRunRecord,
+        customEdges,
+        steps
+      );
+      
+      if (connection.isMixed) {
+        branches[sourceKey] = "MIXED";
+      } else if (connection.branch) {
+        branches[sourceKey] = connection.branch;
       }
     }
     
-    console.log(`[RESULTPANEL] 📋 Final connectedBranches:`, branches);
     return branches;
-  }, [selectedStepKey, customEdges]);
+  }, [selectedStepKey, customEdges, steps, stepRunStates]);
 
-  // Get available nodes for dropdown (nodes before current selected)
+  // Get available nodes for dropdown - only ancestors, no self or siblings
   const availableNodes = useMemo(() => {
     if (!selectedStepKey) return [];
-    const selectedIndex = steps.findIndex((s) => s.key === selectedStepKey);
-    if (selectedIndex <= 0) return [];
-    return steps.slice(0, selectedIndex);
-  }, [selectedStepKey, steps]);
+    
+    // Build set of all ancestors by tracing backward through edges
+    const ancestors = new Set<string>();
+    const visited = new Set<string>();
+    
+    const traceAncestors = (nodeKey: string) => {
+      if (visited.has(nodeKey)) return;
+      visited.add(nodeKey);
+      
+      const incomingEdges = customEdges.filter(e => e.target === nodeKey);
+      for (const edge of incomingEdges) {
+        ancestors.add(edge.source);
+        traceAncestors(edge.source); // Recursive trace
+      }
+    };
+    
+    traceAncestors(selectedStepKey);
+    
+    // FALLBACK: If no edges found, use simple sequential order (all nodes before selected)
+    if (ancestors.size === 0) {
+      const selectedIndex = steps.findIndex(s => s.key === selectedStepKey);
+      if (selectedIndex > 0) {
+        for (let i = 0; i < selectedIndex; i++) {
+          ancestors.add(steps[i].key);
+        }
+      }
+    }
+    
+    // Filter steps: must be ancestor AND have output data
+    return steps
+      .filter(step => ancestors.has(step.key) && stepOutputs[step.key] !== undefined);
+  }, [selectedStepKey, steps, stepOutputs, customEdges]);
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-gray-50">
@@ -113,42 +258,20 @@ export function ResultPanel(): JSX.Element {
         
         {/* Node selector dropdown */}
         {availableNodes.length > 0 && (
-          <div className="flex items-center gap-2">
-            <label className="text-xs font-semibold text-emerald-700">📌 Select Node:</label>
-            <select
-              value={resultNodeKey || ""}
-              onChange={(e) => setResultNodeKey(e.target.value || null)}
-              className="rounded-md border-2 border-emerald-300 bg-white px-2 py-1 text-xs font-semibold text-emerald-800 focus:border-emerald-500 focus:outline-none"
-              aria-label="Select node to view output"
-            >
-              <option value="">-- None --</option>
-              {availableNodes.map((step) => (
-                <option key={step.key} value={step.key}>
-                  {step.key} - {step.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-        
-        <div className="ml-auto flex items-center gap-2">
-          {resultNodeKey && (
-            <button
-              type="button"
-              onClick={() => markSample(resultNodeKey)}
-              className="rounded-md border-2 border-emerald-500 bg-white px-3 py-1 text-xs font-bold uppercase text-emerald-700 transition hover:bg-emerald-500 hover:text-white"
-            >
-              💾 Mark sample
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={() => clearLogs(selectedStepKey)}
-            className="rounded-md border-2 border-rose-300 bg-white px-3 py-1 text-xs font-bold uppercase text-rose-600 transition hover:bg-rose-500 hover:text-white"
+          <select
+            value={resultNodeKey || ""}
+            onChange={(e) => setResultNodeKey(e.target.value || null)}
+            className="ml-auto rounded-md border-2 border-emerald-300 bg-white px-2 py-1 text-xs font-semibold text-emerald-800 focus:border-emerald-500 focus:outline-none"
+            aria-label="Select node to view output"
           >
-            🗑️ Clear
-          </button>
-        </div>
+            <option value="">-- None --</option>
+            {availableNodes.map((step) => (
+              <option key={step.key} value={step.key}>
+                {step.key} - {step.name}
+              </option>
+            ))}
+          </select>
+        )}
       </header>
 
       <nav className="flex items-center gap-2 border-b-2 border-gray-200 bg-white px-4 py-2 text-sm shadow-sm">
@@ -172,7 +295,14 @@ export function ResultPanel(): JSX.Element {
 
       <div className="flex-1 overflow-hidden bg-white">
         {activeTab === "logs" && <LogsPanel logs={logs} />}
-        {activeTab === "data" && <DataFieldsPanel outputs={combinedOutputs} selectedStepKey={resultNodeKey || undefined} connectedBranches={connectedBranches} />}
+        {activeTab === "data" && (
+          <DataFieldsPanel 
+            outputs={combinedOutputs} 
+            selectedStepKey={selectedStepKey}  // Canvas selected node (for branch lock logic)
+            resultNodeKey={resultNodeKey}       // Result panel selected node (for display)
+            connectedBranches={connectedBranches} 
+          />
+        )}
       </div>
     </div>
   );

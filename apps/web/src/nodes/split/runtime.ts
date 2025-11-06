@@ -1,5 +1,6 @@
 import type { NodeRuntimeArgs, NodeRuntimeResult } from "../types";
 import { smartUnwrap, getFieldValue } from "../utils";
+import { log } from "../../utils/logger";
 
 /**
  * SPLIT Node - Simple array splitter (like n8n's "Split Out")
@@ -17,11 +18,13 @@ import { smartUnwrap, getFieldValue } from "../utils";
 export async function runSplitNode(args: NodeRuntimeArgs): Promise<NodeRuntimeResult> {
   const mode = (args.config.mode as string) ?? "auto";
   const fieldPath = (args.config.fieldPath as string) ?? "";
+  const context = { nodeKey: args.currentNodeKey, nodeType: 'split', mode };
   
   let previousData: unknown = args.resolvedConfig.__previousOutput || null;
   previousData = smartUnwrap(previousData, args.previousNodeType);
 
-
+  // Debug: Log received data
+  log.debug(`SPLIT received data`, { ...context, previousData, previousDataType: typeof previousData });
 
   // Mode: Manual field selection
   if (mode === "field" && fieldPath) {
@@ -31,21 +34,23 @@ export async function runSplitNode(args: NodeRuntimeArgs): Promise<NodeRuntimeRe
       .replace(/\}\}$/, "") // Remove }}
       .trim();
     
+    log.debug(`Extracting field`, { ...context, fieldPath, cleanPath });
     const fieldValue = getFieldValue(previousData, cleanPath);
+    log.debug(`Field value extracted`, { ...context, cleanPath, fieldValue, isArray: Array.isArray(fieldValue) });
     
     if (Array.isArray(fieldValue)) {
-
+      log.dataFlow(`Split field extracted`, { ...context, fieldPath: cleanPath, itemCount: fieldValue.length });
       return { output: fieldValue };
     }
     
-    console.warn(`[SPLIT] Field "${cleanPath}" is not an array:`, fieldValue);
+    log.warn(`Field is not an array`, { ...context, fieldPath: cleanPath, fieldType: typeof fieldValue });
     return { output: fieldValue };
   }
 
   // Mode: Auto-detect array
   // Case 1: Input is already array
   if (Array.isArray(previousData)) {
-
+    log.dataFlow(`Input is already an array`, { ...context, itemCount: previousData.length });
     return { output: previousData };
   }
 
@@ -55,24 +60,24 @@ export async function runSplitNode(args: NodeRuntimeArgs): Promise<NodeRuntimeRe
     const arrayFields = Object.entries(dataObj).filter(([_, value]) => Array.isArray(value));
     
     if (arrayFields.length === 0) {
-      console.warn("[SPLIT] No array fields found in object");
+      log.warn('No array fields found in object', context);
       return { output: previousData };
     }
     
     if (arrayFields.length === 1) {
       const [fieldName, arrayValue] = arrayFields[0];
-
+      log.dataFlow(`Auto-detected single array field`, { ...context, fieldName, itemCount: (arrayValue as unknown[]).length });
       return { output: arrayValue };
     }
     
     // Multiple arrays found - use first one
     const [firstFieldName, firstArrayValue] = arrayFields[0];
-
+    log.info(`Multiple array fields found, using first one`, { ...context, fieldName: firstFieldName, totalArrayFields: arrayFields.length });
     return { output: firstArrayValue };
   }
 
   // Not an array or object
-  console.warn("[SPLIT] Input is not array or object:", previousData);
+  log.warn('Input is not array or object', { ...context, inputType: typeof previousData });
   return { output: previousData };
 }
 

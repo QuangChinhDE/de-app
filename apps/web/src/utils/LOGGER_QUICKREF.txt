@@ -1,0 +1,121 @@
+┌─────────────────────────────────────────────────────────────────┐
+│                    LOGGER QUICK REFERENCE                       │
+│                  apps/web/src/utils/logger.ts                   │
+└─────────────────────────────────────────────────────────────────┘
+
+📥 IMPORT
+─────────
+import { log } from '../../utils/logger';
+
+📝 BASIC USAGE
+──────────────
+log.debug('Debug message', { key: 'value' });
+log.info('Info message', { key: 'value' });
+log.warn('Warning message', { key: 'value' });
+log.error('Error message', error, { key: 'value' });
+log.success('Success message', { key: 'value' });
+
+🎯 SPECIALIZED LOGS
+───────────────────
+log.execution('Node execution', { nodeKey, nodeType });
+log.dataFlow('Data transform', { itemCount: 10 });
+
+🏷️ CONTEXT PATTERN
+───────────────────
+const context = { 
+  nodeKey: args.currentNodeKey, 
+  nodeType: 'mynode',
+  operation: 'transform'
+};
+
+log.info('Processing started', context);
+log.success('Processing completed', { ...context, itemCount: 5 });
+
+⏱️ PERFORMANCE TIMING
+─────────────────────
+log.time('operation-name');
+// ... do work ...
+log.timeEnd('operation-name'); // Logs: operation-name: 123ms
+
+📦 GROUPING
+───────────
+log.group('Complex Operation');
+log.info('Step 1');
+log.info('Step 2');
+log.groupEnd();
+
+🎨 LOG LEVELS
+─────────────
+Level    Icon  Color   When to Use
+─────────────────────────────────────────────────────
+DEBUG    🔍    Gray    Technical details (dev only)
+INFO     ℹ️     Blue    General information
+WARN     ⚠️     Orange  Non-critical issues
+ERROR    ❌    Red     Errors with stack traces
+SUCCESS  ✅    Green   Operations completed
+EXEC     🎯    Purple  Node execution tracking
+DATA     📦    Cyan    Data transformations
+
+📋 OUTPUT FORMAT
+────────────────
+[HH:MM:SS] ICON LEVEL Message {[nodeKey] <nodeType> "name"}
+  └─ { additionalContext }
+
+Example:
+[14:23:45] 🎯 EXEC Loop started {[loop1] <loop>}
+  └─ { batchSize: 10 }
+
+✅ BEST PRACTICES
+─────────────────
+DO:
+  ✓ Include nodeKey in context
+  ✓ Include operation type
+  ✓ Use appropriate log level
+  ✓ Add context for better debugging
+
+DON'T:
+  ✗ Log sensitive data (passwords, tokens)
+  ✗ Use console.log directly
+  ✗ Log in tight loops (performance)
+
+🔧 CONFIGURATION
+────────────────
+import { logger, LogLevel } from './utils/logger';
+
+// Show only warnings and errors
+logger.setLevel(LogLevel.WARN);
+
+// Show everything including DEBUG
+logger.setLevel(LogLevel.DEBUG);
+
+📖 EXAMPLES
+───────────
+1. Node Execution:
+   const context = { nodeKey: args.currentNodeKey, nodeType: 'http' };
+   log.execution('HTTP request started', { ...context, url });
+   
+2. Error Handling:
+   try {
+     // ... code ...
+   } catch (error) {
+     log.error('Operation failed', error, context);
+   }
+   
+3. Data Processing:
+   log.dataFlow('Items received', { ...context, itemCount: items.length });
+   
+4. Warnings:
+   log.warn('Input validation failed', { ...context, issue: 'empty array' });
+
+🚀 QUICK START
+──────────────
+1. Import: import { log } from '../../utils/logger';
+2. Create context: const context = { nodeKey, nodeType };
+3. Log away: log.info('Message', context);
+
+That's it! Simple and powerful. 🎉
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+For detailed documentation, see: apps/web/src/utils/logger.test.md
+For examples, see: apps/web/src/utils/logger.examples.ts
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

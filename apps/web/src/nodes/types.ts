@@ -20,7 +20,15 @@ export interface NodeRuntimeArgs {
 }
 
 export interface NodeRuntimeResult {
-  output: unknown;
+  // Single output (for most nodes: HTTP, SET, CODE, etc.)
+  output?: unknown;
+  
+  // Multiple outputs (for branching nodes: IF, SWITCH)
+  outputs?: Array<{
+    label: string;  // 'TRUE', 'FALSE', 'case_0', 'default', etc.
+    data: unknown;
+  }>;
+  
   status?: number;
   durationMs?: number;
   requestPreview?: HttpRunResult["requestPreview"];

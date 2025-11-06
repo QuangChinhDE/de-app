@@ -20,8 +20,9 @@ const httpConfigSchema = z.object({
     url: z.string().url(),
     queryParams: keyValueSchema.optional(),
     headers: keyValueSchema.optional(),
-    bodyMode: z.enum(["json", "form", "multipart"]).optional(),
+    bodyMode: z.enum(["json", "form", "multipart", "raw"]).optional(),
     jsonBody: z.string().optional(),
+    rawBody: z.string().optional(),
     formBody: keyValueSchema.optional(),
     multipartBody: keyValueSchema.optional(),
     authType: z.enum(["none", "bearer", "basic"]).default("none"),
@@ -187,6 +188,13 @@ function buildRequestBody(config) {
                 preview[entry.key] = value.length > 120 ? `${value.slice(0, 120)}…` : value;
             }
             return { body: form, preview };
+        }
+        case "raw": {
+            const rawText = config.rawBody ?? "";
+            return {
+                body: rawText,
+                preview: rawText.length > 200 ? `${rawText.slice(0, 200)}…` : rawText,
+            };
         }
         default:
             return { body: undefined, preview: undefined };

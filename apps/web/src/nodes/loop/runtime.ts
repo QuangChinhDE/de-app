@@ -1,5 +1,6 @@
 import type { NodeRuntimeArgs, NodeRuntimeResult } from "../types";
 import { smartUnwrap } from "../utils";
+import { log } from "../../utils/logger";
 
 /**
  * LOOP Node Runtime
@@ -12,19 +13,21 @@ import { smartUnwrap } from "../utils";
  * return metadata about the loop.
  */
 export async function runLoopNode(args: NodeRuntimeArgs): Promise<NodeRuntimeResult> {
-  const { resolvedConfig, previousOutput } = args;
+  const { resolvedConfig, previousOutput, currentNodeKey } = args;
   
   let items = resolvedConfig.items as unknown;
   const batchSize = (resolvedConfig.batchSize as number) || 1;
   const pauseBetweenBatches = (resolvedConfig.pauseBetweenBatches as number) || 0;
   const continueOnError = (resolvedConfig.continueOnError as boolean) || false;
   
-  console.log(`[LOOP] Starting loop with batch size: ${batchSize}`);
+  const context = { nodeKey: currentNodeKey, nodeType: 'loop' };
+  
+  log.execution('Loop started', { ...context, batchSize });
   
   // If items not provided, try previous output
   if (items == null || items === "") {
     items = smartUnwrap(previousOutput, args.previousNodeType);
-    console.log("[LOOP] 🎯 Using previous output as items");
+    log.dataFlow('Using previous output as loop items', context);
   }
   
   // Validate items is an array
@@ -36,7 +39,7 @@ export async function runLoopNode(args: NodeRuntimeArgs): Promise<NodeRuntimeRes
   }
   
   if (items.length === 0) {
-    console.log("[LOOP] ⚠️ Empty array provided, nothing to loop over");
+    log.warn('Empty array provided to loop, nothing to process', context);
     return {
       output: {
         items: [],
@@ -48,7 +51,7 @@ export async function runLoopNode(args: NodeRuntimeArgs): Promise<NodeRuntimeRes
     };
   }
   
-  console.log(`[LOOP] Processing ${items.length} items in batches of ${batchSize}`);
+  log.info(`Processing ${items.length} items in ${Math.ceil(items.length / batchSize)} batches`, context);
   
   // Split into batches
   const batches: unknown[][] = [];
@@ -56,7 +59,7 @@ export async function runLoopNode(args: NodeRuntimeArgs): Promise<NodeRuntimeRes
     batches.push(items.slice(i, i + batchSize));
   }
   
-  console.log(`[LOOP] Created ${batches.length} batches`);
+  log.debug(`Batches created`, { ...context, batchCount: batches.length });
   
   // Process each batch with delay
   const processedItems: unknown[] = [];
@@ -66,7 +69,11 @@ export async function runLoopNode(args: NodeRuntimeArgs): Promise<NodeRuntimeRes
   for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
     const batch = batches[batchIndex];
     
-    console.log(`[LOOP] Processing batch ${batchIndex + 1}/${batches.length} (${batch.length} items)`);
+    log.execution(`Processing batch ${batchIndex + 1}/${batches.length}`, { 
+      ...context, 
+      batchIndex: batchIndex + 1,
+      itemsInBatch: batch.length 
+    });
     
     // In a real implementation, this would execute downstream nodes for each item
     // For now, we just track the items and simulate processing
@@ -84,20 +91,27 @@ export async function runLoopNode(args: NodeRuntimeArgs): Promise<NodeRuntimeRes
           );
         }
         
-        console.warn(`[LOOP] Error processing item ${successCount + errorCount}, continuing...`);
+        log.warn(`Error processing item ${successCount + errorCount}, continuing...`, {
+          ...context,
+          itemNumber: successCount + errorCount,
+          continueOnError
+        });
       }
     }
     
     // Pause between batches (except after last batch)
     if (pauseBetweenBatches > 0 && batchIndex < batches.length - 1) {
-      console.log(`[LOOP] Pausing ${pauseBetweenBatches}ms before next batch...`);
+      log.debug(`Pausing before next batch`, { ...context, pauseMs: pauseBetweenBatches });
       await new Promise((resolve) => setTimeout(resolve, pauseBetweenBatches));
     }
   }
   
-  console.log(
-    `[LOOP] ✅ Completed: ${successCount} success, ${errorCount} errors, ${items.length} total`
-  );
+  log.success(`Loop completed`, {
+    ...context,
+    successCount,
+    errorCount,
+    totalCount: items.length
+  });
   
   return {
     output: {

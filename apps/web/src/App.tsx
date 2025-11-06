@@ -17,21 +17,21 @@ export default function App(): JSX.Element {
   const setShowResult = useFlowStore((state) => state.setShowResultPanel);
   const importFlow = useFlowStore((state) => state.importFlow);
 
-  // Auto-load test workflow on first mount
-  useEffect(() => {
-    if (steps.length === 0) {
-      fetch('/test-workflow-import.json')
-        .then(response => response.json())
-        .then(payload => {
-          importFlow(payload);
-          console.log('✅ Test workflow auto-loaded');
-        })
-        .catch(error => {
-          console.error('Failed to auto-load test workflow:', error);
-        });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Run only once on mount
+  // Auto-load test workflow on first mount (DISABLED - not needed)
+  // useEffect(() => {
+  //   if (steps.length === 0) {
+  //     fetch('/test-workflow-import.json')
+  //       .then(response => response.json())
+  //       .then(payload => {
+  //         importFlow(payload);
+  //         console.log('✅ Test workflow auto-loaded');
+  //       })
+  //       .catch(error => {
+  //         console.error('Failed to auto-load test workflow:', error);
+  //       });
+  //   }
+  //   // eslint-disable-next-line react-hooks/exhaustive-deps
+  // }, []); // Run only once on mount
 
   // Auto-select first step if none selected
   useEffect(() => {

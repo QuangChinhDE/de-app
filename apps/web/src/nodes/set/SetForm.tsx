@@ -37,13 +37,28 @@ export function SetForm({ schema, value, onChange, onRun, isRunning, stepOutputs
   const includeOtherFields = watch("includeOtherFields");
 
   const handleFieldsChange = (newFields: Array<{ key: string; value: string; type?: string; sensitive?: boolean }>) => {
-    setValue("fields", newFields, { shouldValidate: true });
-    onChange({ ...value, fields: newFields });
+    // Deep clone to prevent shared references between nodes
+    const clonedFields = JSON.parse(JSON.stringify(newFields));
+    
+    setValue("fields", clonedFields, { shouldValidate: true });
+    
+    // Build completely new config object
+    const newConfig = {
+      fields: clonedFields,
+      includeOtherFields: includeOtherFields ?? true
+    };
+    onChange(newConfig);
   };
 
   const handleIncludeChange = (checked: boolean) => {
     setValue("includeOtherFields", checked, { shouldValidate: true });
-    onChange({ ...value, includeOtherFields: checked });
+    
+    // Build completely new config object
+    const newConfig = {
+      fields: JSON.parse(JSON.stringify(fields ?? [])),
+      includeOtherFields: checked
+    };
+    onChange(newConfig);
   };
 
   const onSubmit = handleSubmit((data: SetNodeConfig) => {
@@ -85,18 +100,6 @@ export function SetForm({ schema, value, onChange, onRun, isRunning, stepOutputs
               : "Output will only contain the fields you set"}
           </p>
         </div>
-      </div>
-
-      {/* Footer */}
-      <div className="border-t border-ink-200 px-4 py-3">
-        <Button
-          type="submit"
-          variant="primary"
-          fullWidth
-          disabled={isRunning}
-        >
-          {isRunning ? "Running..." : "▶ Run Step"}
-        </Button>
       </div>
     </form>
   );

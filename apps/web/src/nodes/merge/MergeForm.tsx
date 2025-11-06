@@ -229,18 +229,6 @@ export function MergeForm({ schema, value, onChange, onRun, isRunning }: NodeFor
           </>
         )}
       </div>
-
-      {/* Footer */}
-      <div className="border-t border-ink-200 px-4 py-3">
-        <Button
-          type="submit"
-          variant="primary"
-          fullWidth
-          disabled={isRunning}
-        >
-          {isRunning ? "Running..." : "▶ Run Step"}
-        </Button>
-      </div>
     </form>
   );
 }
